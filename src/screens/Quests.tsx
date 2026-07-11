@@ -396,14 +396,17 @@ function ProjectRow({ project }: { project: Project }) {
     );
   }
 
+  const parked = project.status === 'parked';
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 6px', borderBottom: '1px solid #1e1e1c' }}>
-      <span style={{ width: 10, height: 10, borderRadius: 2, background: project.colorTag, flex: 'none' }} />
-      <span style={{ fontSize: 13, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{project.name}</span>
-      <span style={{ fontSize: 10, color: project.status === 'active' ? 'var(--success)' : 'var(--text-dim2)', letterSpacing: '.08em', flex: 'none' }}>
-        {project.status.toUpperCase()}
+      <span style={{ width: 10, height: 10, borderRadius: 2, background: project.colorTag, flex: 'none', opacity: parked ? 0.4 : 1 }} />
+      <span style={{
+        flex: 1, minWidth: 0, fontSize: 13, fontWeight: 700, lineHeight: 1.4, overflowWrap: 'anywhere',
+        color: parked ? 'var(--text-dim2)' : 'var(--text)'
+      }}>
+        {project.name}
       </span>
-      <span style={{ fontSize: 10, color: 'var(--text-faint)', marginLeft: 'auto', flex: 'none' }}>
+      <span style={{ fontSize: 10, color: 'var(--text-faint)', flex: 'none' }}>
         {quests.length}q · {taskCount}t
       </span>
       <EditButton thing={`project ${project.name}`} onClick={() => setEditing(true)} />
@@ -451,12 +454,12 @@ function QuestCard({ quest }: { quest: Quest }) {
             style={{
               border: 'none', background: 'transparent', cursor: 'pointer', padding: 0,
               fontSize: 11, letterSpacing: '.14em', color, textAlign: 'left',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+              flex: 1, minWidth: 0, lineHeight: 1.5, overflowWrap: 'anywhere'
             }}
           >
             <span style={{ color: 'var(--text-faint)', display: 'inline-block', width: 14 }}>{collapsed ? '▸' : '▾'}</span>
             {project?.name}
-            <span style={{ color: 'var(--text-faint)' }}> · {quest.status.toUpperCase()}</span>
+            {quest.status === 'done' && <span style={{ color: 'var(--text-faint)' }}> · DONE</span>}
           </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <EditButton thing={`quest ${quest.title}`} onClick={() => { setTitle(quest.title); setDod(quest.definitionOfDone); setEditing(!editing); setCollapsed(false); }} />

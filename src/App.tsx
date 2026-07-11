@@ -11,6 +11,7 @@ import { Ledger } from './screens/Ledger';
 import { Config } from './screens/Config';
 import { RewardOverlay } from './components/RewardOverlay';
 import { Toast } from './components/Toast';
+import { onUpdateReady, applyUpdate } from './lib/updater';
 import type { Screen } from './types';
 
 const NAV: { key: Screen; label: string; glyph: string }[] = [
@@ -97,11 +98,30 @@ function RightRail() {
   );
 }
 
+function UpdateBanner() {
+  return (
+    <button
+      onClick={applyUpdate}
+      style={{
+        position: 'absolute', top: 12, right: 12, zIndex: 70,
+        background: 'var(--bg-panel)', border: '1px solid var(--accent)', color: 'var(--accent)',
+        fontSize: 10, fontWeight: 700, letterSpacing: '.12em', padding: '7px 12px',
+        borderRadius: 4, cursor: 'pointer', animation: 'dq-shift .3s ease both',
+        boxShadow: '0 4px 20px rgba(0,0,0,.5)'
+      }}
+    >
+      ⟳ UPDATE READY · TAP TO INSTALL
+    </button>
+  );
+}
+
 export default function App() {
   const { state, dispatch } = useStore();
   const wide = useWide();
   const inSession = state.screen === 'session' && !!state.session;
   const li = levelInfo(state.data.player.xp);
+  const [updateReady, setUpdateReady] = useState(false);
+  useEffect(() => onUpdateReady(setUpdateReady), []);
 
   if (!state.hydrated) {
     return (
@@ -180,6 +200,7 @@ export default function App() {
           )}
           {state.overlay && <RewardOverlay />}
           {state.toast && <Toast message={state.toast} />}
+          {updateReady && <UpdateBanner />}
         </div>
 
         {wide && !inSession && <RightRail />}

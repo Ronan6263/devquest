@@ -28,6 +28,9 @@ type Action =
   | { type: 'log-proof'; achievementId: string; proof: string; now: number }
   | { type: 'add-task'; questId: string; title: string; size: TaskSize; tag: TaskTag }
   | { type: 'delete-task'; taskId: string }
+  | { type: 'edit-task'; taskId: string; title: string; size: TaskSize; tag: TaskTag }
+  | { type: 'edit-project'; projectId: string; name: string; color: string }
+  | { type: 'edit-quest'; questId: string; title: string; dod: string }
   | { type: 'add-project'; name: string; color: string }
   | { type: 'toggle-project'; projectId: string }
   | { type: 'delete-project'; projectId: string }
@@ -242,6 +245,45 @@ function reducer(state: AppState, action: Action): AppState {
         return { ...state, toast: 'Done tasks are history — their XP is banked. Only todo tasks can be removed.' };
       }
       return { ...state, data: { ...state.data, tasks: state.data.tasks.filter((t) => t.id !== action.taskId) } };
+    }
+
+    case 'edit-task': {
+      const task = state.data.tasks.find((t) => t.id === action.taskId);
+      if (!task) return state;
+      if (task.status === 'done') {
+        return { ...state, toast: 'Done tasks are history — their XP is banked and can’t be re-sized.' };
+      }
+      const title = action.title.trim().slice(0, 80);
+      if (!title) return state;
+      const tasks = state.data.tasks.map((t) =>
+        t.id === task.id ? { ...t, title, size: action.size, tags: [action.tag] } : t
+      );
+      return { ...state, data: { ...state.data, tasks } };
+    }
+
+    case 'edit-project': {
+      const p = state.data.projects.find((x) => x.id === action.projectId);
+      if (!p) return state;
+      const name = action.name.trim().toUpperCase().slice(0, 32);
+      if (!name) return state;
+      if (state.data.projects.some((x) => x.id !== p.id && x.name === name)) {
+        return { ...state, toast: `A project named ${name} already exists.` };
+      }
+      const projects = state.data.projects.map((x) =>
+        x.id === p.id ? { ...x, name, colorTag: action.color } : x
+      );
+      return { ...state, data: { ...state.data, projects } };
+    }
+
+    case 'edit-quest': {
+      const q = state.data.quests.find((x) => x.id === action.questId);
+      if (!q) return state;
+      const title = action.title.trim().slice(0, 60);
+      if (!title) return state;
+      const quests = state.data.quests.map((x) =>
+        x.id === q.id ? { ...x, title, definitionOfDone: action.dod.trim().slice(0, 200) || '—' } : x
+      );
+      return { ...state, data: { ...state.data, quests } };
     }
 
     case 'add-project': {

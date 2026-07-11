@@ -259,7 +259,7 @@ function NewQuest() {
       <div style={{ ...label, letterSpacing: '.16em' }}>NEW QUEST</div>
       {projects.length === 0 ? (
         <div style={{ fontSize: 11, color: 'var(--text-dim2)', lineHeight: 1.6 }}>
-          Quests live inside projects — create your first one in the PROJECTS card below, then come back here.
+          Quests live inside projects — create your first one in the PROJECTS card above, then come back here.
         </div>
       ) : (
         <select
@@ -425,6 +425,7 @@ function QuestCard({ quest }: { quest: Quest }) {
   const { state, dispatch } = useStore();
   const [armed, fire] = useArmed();
   const [editing, setEditing] = useState(false);
+  const [collapsed, setCollapsed] = useState(quest.status !== 'active');
   const [title, setTitle] = useState(quest.title);
   const [dod, setDod] = useState(quest.definitionOfDone);
   const { data } = state;
@@ -442,15 +443,23 @@ function QuestCard({ quest }: { quest: Quest }) {
 
   return (
     <div className="dq-card" style={{ borderRadius: 6, overflow: 'hidden', opacity: parked ? 0.6 : 1 }}>
-      <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border-dim)', borderLeft: `3px solid ${color}` }}>
+      <div style={{ padding: '14px 16px', borderBottom: collapsed ? 'none' : '1px solid var(--border-dim)', borderLeft: `3px solid ${color}` }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-          <div style={{ fontSize: 11, letterSpacing: '.14em', color }}>
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            title={collapsed ? 'expand quest' : 'collapse quest'}
+            style={{
+              border: 'none', background: 'transparent', cursor: 'pointer', padding: 0,
+              fontSize: 11, letterSpacing: '.14em', color, textAlign: 'left',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+            }}
+          >
+            <span style={{ color: 'var(--text-faint)', display: 'inline-block', width: 14 }}>{collapsed ? '▸' : '▾'}</span>
             {project?.name}
             <span style={{ color: 'var(--text-faint)' }}> · {quest.status.toUpperCase()}</span>
-          </div>
+          </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{done}/{tasks.length} · {pct}%</span>
-            <EditButton thing={`quest ${quest.title}`} onClick={() => { setTitle(quest.title); setDod(quest.definitionOfDone); setEditing(!editing); }} />
+            <EditButton thing={`quest ${quest.title}`} onClick={() => { setTitle(quest.title); setDod(quest.definitionOfDone); setEditing(!editing); setCollapsed(false); }} />
             {quest.status !== 'done' && (
               <SmallToggle
                 active={quest.status === 'active'}
@@ -491,22 +500,31 @@ function QuestCard({ quest }: { quest: Quest }) {
           </div>
         ) : (
           <>
-            <div style={{ fontSize: 16, fontWeight: 700, marginTop: 6 }}>{quest.title}</div>
-            <div style={{ fontSize: 11, color: 'var(--text-dim2)', marginTop: 6, lineHeight: 1.6 }}>
-              DoD: {quest.definitionOfDone}
+            <div
+              style={{ fontSize: 16, fontWeight: 700, marginTop: 6, cursor: 'pointer' }}
+              onClick={() => setCollapsed(!collapsed)}
+            >
+              {quest.title}
             </div>
+            {!collapsed && (
+              <div style={{ fontSize: 11, color: 'var(--text-dim2)', marginTop: 6, lineHeight: 1.6 }}>
+                DoD: {quest.definitionOfDone}
+              </div>
+            )}
           </>
         )}
         <div style={{ height: 6, background: 'var(--bg-sunken)', borderRadius: 3, overflow: 'hidden', marginTop: 10 }}>
           <div style={{ height: '100%', width: `${pct}%`, background: color }} />
         </div>
       </div>
-      <div style={{ padding: '6px 10px' }}>
-        {tasks.map((t) => (
-          <TaskRow key={t.id} task={t} />
-        ))}
-        {quest.status === 'active' && <AddTask quest={quest} />}
-      </div>
+      {!collapsed && (
+        <div style={{ padding: '6px 10px' }}>
+          {tasks.map((t) => (
+            <TaskRow key={t.id} task={t} />
+          ))}
+          {quest.status !== 'done' && <AddTask quest={quest} />}
+        </div>
+      )}
     </div>
   );
 }
@@ -531,12 +549,6 @@ export function Quests() {
         Tasks are checked off in session, not here — define → do, in that order.
       </div>
 
-      <NewQuest />
-
-      {quests.map((q) => (
-        <QuestCard key={q.id} quest={q} />
-      ))}
-
       <div className="dq-card" style={{ borderRadius: 6, padding: '14px 16px' }}>
         <div style={{ ...label, letterSpacing: '.16em', marginBottom: 4 }}>
           PROJECTS · {data.projects.filter((p) => p.status === 'active').length}/{cap} ACTIVE SLOTS
@@ -552,6 +564,12 @@ export function Quests() {
           <NewProject />
         </div>
       </div>
+
+      <NewQuest />
+
+      {quests.map((q) => (
+        <QuestCard key={q.id} quest={q} />
+      ))}
     </div>
   );
 }

@@ -257,18 +257,24 @@ function NewQuest() {
   return (
     <div className="dq-card" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10, borderColor: 'var(--border-light)' }}>
       <div style={{ ...label, letterSpacing: '.16em' }}>NEW QUEST</div>
-      <select
-        className="dq-input"
-        value={projectId}
-        onChange={(e) => setProjectId(e.target.value)}
-        style={{ appearance: 'none' }}
-      >
-        {projects.map((p) => (
-          <option key={p.id} value={p.id}>
-            {p.name}{p.status === 'parked' ? ' (parked)' : ''}
-          </option>
-        ))}
-      </select>
+      {projects.length === 0 ? (
+        <div style={{ fontSize: 11, color: 'var(--text-dim2)', lineHeight: 1.6 }}>
+          Quests live inside projects — create your first one in the PROJECTS card below, then come back here.
+        </div>
+      ) : (
+        <select
+          className="dq-input"
+          value={projectId}
+          onChange={(e) => setProjectId(e.target.value)}
+          style={{ appearance: 'none' }}
+        >
+          {projects.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}{p.status === 'parked' ? ' (parked)' : ''}
+            </option>
+          ))}
+        </select>
+      )}
       <input
         className="dq-input"
         autoFocus

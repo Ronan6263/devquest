@@ -261,8 +261,8 @@ export function Config({ wide }: { wide: boolean }) {
       <div className="dq-card" style={{ borderRadius: 6, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ ...label, letterSpacing: '.16em' }}>FRESH START</div>
         <div style={{ fontSize: 11, color: 'var(--text-dim2)', lineHeight: 1.6 }}>
-          Wipes everything — XP, level, sessions, streak, achievements, proofs, and any tasks you added — and
-          restores the day-one seed (Toaster #1 + Build DevQuest). Export a JSON backup first if you might want
+          Wipes everything — XP, level, sessions, streak, achievements, proofs, projects, quests, and tasks —
+          leaving a blank slate, same as a brand-new install. Export a JSON backup first if you might want
           this history back. This cannot be undone.
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
@@ -275,7 +275,7 @@ export function Config({ wide }: { wide: boolean }) {
               dispatch({ type: 'reset' });
             }}
           >
-            {confirmReset ? 'TAP AGAIN TO WIPE · SURE?' : 'RESET TO DAY ONE'}
+            {confirmReset ? 'TAP AGAIN TO WIPE · SURE?' : 'WIPE ALL DATA'}
           </button>
           {confirmReset && (
             <button className="dq-btn-ghost muted" onClick={() => setConfirmReset(false)}>KEEP MY DATA</button>

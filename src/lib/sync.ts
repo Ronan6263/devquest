@@ -201,17 +201,18 @@ export function mergeStates(local: Envelope, remote: Envelope, lastSyncedXp: num
 }
 
 /**
- * An untouched day-one install: no sessions, no proof earns, no deletions,
- * seed XP only. Linking a pristine device should adopt the remote wholesale
+ * An untouched fresh install: no sessions, no XP, no deletions, nothing
+ * created yet. Linking a pristine device should adopt the remote wholesale
  * instead of "merging" a blank slate into real work.
  */
 export function isPristineSeed(state: PersistedState): boolean {
   return (
     state.sessions.length === 0 &&
-    state.player.xp === SIZE_XP.S &&
+    state.player.xp === 0 &&
     !(state.deletedIds ?? []).length &&
-    state.tasks.filter((t) => t.status === 'done').length <= 1 &&
-    state.tasks.every((t) => t.id.startsWith('t-'))
+    state.projects.length === 0 &&
+    state.quests.length === 0 &&
+    state.tasks.length === 0
   );
 }
 

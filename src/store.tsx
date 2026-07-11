@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useReducer, useRef } from 'react';
 import type {
-  LiveSession, OverlayData, PersistedState, Screen, Task, TaskSize, TaskTag
+  LiveSession, OverlayData, PersistedState, Project, Quest, Screen, Task, TaskSize, TaskTag
 } from './types';
 import { SIZE_XP, levelInfo } from './lib/levels';
 import { evaluateAuto, defById } from './lib/achievements';
@@ -27,13 +27,30 @@ type Action =
   | { type: 'continue-overlay' }
   | { type: 'log-proof'; achievementId: string; proof: string; now: number }
   | { type: 'add-task'; questId: string; title: string; size: TaskSize; tag: TaskTag }
+  | { type: 'delete-task'; taskId: string }
+  | { type: 'add-project'; name: string; color: string }
+  | { type: 'toggle-project'; projectId: string }
+  | { type: 'delete-project'; projectId: string }
+  | { type: 'add-quest'; projectId: string; title: string; dod: string }
+  | { type: 'toggle-quest'; questId: string }
+  | { type: 'delete-quest'; questId: string }
   | { type: 'toggle-sound' }
   | { type: 'set-handle'; handle: string }
   | { type: 'import'; data: PersistedState }
+  | { type: 'reset' }
   | { type: 'toast'; message: string }
   | { type: 'dismiss-toast' };
 
 const uid = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+/** Scarcity is a feature: 2 active projects, a 3rd slot at level 5 (design doc §4.6). */
+export function activeProjectCap(data: PersistedState): number {
+  return levelInfo(data.player.xp).level >= 5 ? 3 : 2;
+}
+
+const activeProjects = (data: PersistedState) => data.projects.filter((p) => p.status === 'active');
+const activeQuestOf = (data: PersistedState, projectId: string) =>
+  data.quests.find((q) => q.projectId === projectId && q.status === 'active');
 
 /**
  * Next-ignition queue: first todo task, active quests first (in creation
@@ -218,6 +235,123 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, data: { ...state.data, tasks: [...state.data.tasks, task] } };
     }
 
+    case 'delete-task': {
+      const task = state.data.tasks.find((t) => t.id === action.taskId);
+      if (!task) return state;
+      if (task.status === 'done') {
+        return { ...state, toast: 'Done tasks are history — their XP is banked. Only todo tasks can be removed.' };
+      }
+      return { ...state, data: { ...state.data, tasks: state.data.tasks.filter((t) => t.id !== action.taskId) } };
+    }
+
+    case 'add-project': {
+      const name = action.name.trim().toUpperCase().slice(0, 32);
+      if (!name) return state;
+      if (state.data.projects.some((p) => p.name === name)) {
+        return { ...state, toast: `A project named ${name} already exists.` };
+      }
+      const cap = activeProjectCap(state.data);
+      const hasSlot = activeProjects(state.data).length < cap;
+      const project: Project = {
+        id: uid(), name, colorTag: action.color, status: hasSlot ? 'active' : 'parked', createdAt: Date.now()
+      };
+      return {
+        ...state,
+        data: { ...state.data, projects: [...state.data.projects, project] },
+        toast: hasSlot
+          ? `Project ${name} created.`
+          : `Project ${name} created PARKED — all ${cap} active slots are in use. Scarcity is a feature.`
+      };
+    }
+
+    case 'toggle-project': {
+      const p = state.data.projects.find((x) => x.id === action.projectId);
+      if (!p) return state;
+      if (p.status === 'parked') {
+        const cap = activeProjectCap(state.data);
+        if (activeProjects(state.data).length >= cap) {
+          const hint = cap === 2 ? ' Level 5 unlocks a third slot.' : '';
+          return { ...state, toast: `Max ${cap} active projects — park one first.${hint}` };
+        }
+      }
+      const projects = state.data.projects.map((x) =>
+        x.id === p.id ? { ...x, status: p.status === 'active' ? ('parked' as const) : ('active' as const) } : x
+      );
+      return { ...state, data: { ...state.data, projects } };
+    }
+
+    case 'delete-project': {
+      const p = state.data.projects.find((x) => x.id === action.projectId);
+      if (!p) return state;
+      const questIds = state.data.quests.filter((q) => q.projectId === p.id).map((q) => q.id);
+      return {
+        ...state,
+        data: {
+          ...state.data,
+          projects: state.data.projects.filter((x) => x.id !== p.id),
+          quests: state.data.quests.filter((q) => q.projectId !== p.id),
+          tasks: state.data.tasks.filter((t) => !questIds.includes(t.questId))
+        },
+        toast: `Project ${p.name} deleted. Your level and XP are untouched — projects die, the player's level doesn't.`
+      };
+    }
+
+    case 'add-quest': {
+      const title = action.title.trim().slice(0, 60);
+      if (!title) return state;
+      const project = state.data.projects.find((p) => p.id === action.projectId);
+      if (!project) return state;
+      const slotTaken = !!activeQuestOf(state.data, project.id);
+      const quest: Quest = {
+        id: uid(), projectId: project.id, title,
+        definitionOfDone: action.dod.trim().slice(0, 200) || '—',
+        status: slotTaken || project.status === 'parked' ? 'parked' : 'active',
+        createdAt: Date.now()
+      };
+      return {
+        ...state,
+        data: { ...state.data, quests: [...state.data.quests, quest] },
+        toast: quest.status === 'parked'
+          ? slotTaken
+            ? `Quest parked — ${project.name} already has an active quest (1 per project).`
+            : `Quest parked — ${project.name} is a parked project.`
+          : `Quest "${title}" is live.`
+      };
+    }
+
+    case 'toggle-quest': {
+      const q = state.data.quests.find((x) => x.id === action.questId);
+      if (!q || q.status === 'done') return state;
+      if (q.status === 'parked') {
+        const project = state.data.projects.find((p) => p.id === q.projectId);
+        if (!project || project.status === 'parked') {
+          return { ...state, toast: 'Activate the project first — this quest belongs to a parked project.' };
+        }
+        const current = activeQuestOf(state.data, q.projectId);
+        if (current) {
+          return { ...state, toast: `1 active quest per project — park "${current.title}" first.` };
+        }
+      }
+      const quests = state.data.quests.map((x) =>
+        x.id === q.id ? { ...x, status: q.status === 'active' ? ('parked' as const) : ('active' as const) } : x
+      );
+      return { ...state, data: { ...state.data, quests } };
+    }
+
+    case 'delete-quest': {
+      const q = state.data.quests.find((x) => x.id === action.questId);
+      if (!q) return state;
+      return {
+        ...state,
+        data: {
+          ...state.data,
+          quests: state.data.quests.filter((x) => x.id !== q.id),
+          tasks: state.data.tasks.filter((t) => t.questId !== q.id)
+        },
+        toast: `Quest "${q.title}" deleted. Banked XP stays banked.`
+      };
+    }
+
     case 'toggle-sound':
       return {
         ...state,
@@ -231,6 +365,16 @@ function reducer(state: AppState, action: Action): AppState {
 
     case 'import':
       return { ...state, data: action.data, toast: 'Import complete — state replaced.' };
+
+    case 'reset':
+      return {
+        ...state,
+        data: seedState(Date.now()),
+        session: null,
+        overlay: null,
+        screen: 'home',
+        toast: 'Fresh start — day-one state restored. The meter already moved: design doc, 10 XP.'
+      };
 
     case 'toast':
       return { ...state, toast: action.message };

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store';
 import { levelInfo } from '../lib/levels';
 import { exportJson, validateImport } from '../lib/db';
@@ -17,6 +17,14 @@ export function Config({ wide }: { wide: boolean }) {
   const level = levelInfo(data.player.xp).level;
   const fileInput = useRef<HTMLInputElement>(null);
   const [editingHandle, setEditingHandle] = useState<string | null>(null);
+  const [confirmReset, setConfirmReset] = useState(false);
+
+  // arm-then-confirm: the armed state disarms itself after 4s
+  useEffect(() => {
+    if (!confirmReset) return;
+    const t = setTimeout(() => setConfirmReset(false), 4000);
+    return () => clearTimeout(t);
+  }, [confirmReset]);
   const grid = { display: 'grid', gridTemplateColumns: `repeat(${wide ? 3 : 2}, 1fr)`, gap: 10 } as const;
 
   const onImportFile = async (file: File) => {
@@ -141,6 +149,31 @@ export function Config({ wide }: { wide: boolean }) {
         <div style={{ fontSize: 11, color: 'var(--text-dim2)', marginTop: 12, lineHeight: 1.6 }}>
           v1 ships Terminal only — the rest are stubbed as locked. Each skin is one of your own projects' aesthetics.
           The tool slowly becomes a museum of the things you shipped.
+        </div>
+      </div>
+
+      <div className="dq-card" style={{ borderRadius: 6, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ ...label, letterSpacing: '.16em' }}>FRESH START</div>
+        <div style={{ fontSize: 11, color: 'var(--text-dim2)', lineHeight: 1.6 }}>
+          Wipes everything — XP, level, sessions, streak, achievements, proofs, and any tasks you added — and
+          restores the day-one seed (Toaster #1 + Build DevQuest). Export a JSON backup first if you might want
+          this history back. This cannot be undone.
+        </div>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <button
+            className={confirmReset ? 'dq-btn-solid' : 'dq-btn-ghost muted'}
+            style={confirmReset ? { fontSize: 11, letterSpacing: '.1em', padding: '7px 12px' } : undefined}
+            onClick={() => {
+              if (!confirmReset) { setConfirmReset(true); return; }
+              setConfirmReset(false);
+              dispatch({ type: 'reset' });
+            }}
+          >
+            {confirmReset ? 'TAP AGAIN TO WIPE · SURE?' : 'RESET TO DAY ONE'}
+          </button>
+          {confirmReset && (
+            <button className="dq-btn-ghost muted" onClick={() => setConfirmReset(false)}>KEEP MY DATA</button>
+          )}
         </div>
       </div>
 

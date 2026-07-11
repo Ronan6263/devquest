@@ -5,7 +5,7 @@ import type {
 import { SIZE_XP, levelInfo } from './lib/levels';
 import { evaluateAuto, defById } from './lib/achievements';
 import { loadState, saveState } from './lib/db';
-import { seedState } from './lib/seed';
+import { emptyState } from './lib/seed';
 import { syncManager } from './lib/sync';
 import { weekKey } from './lib/time';
 import { playLevelUp, playXpGain } from './lib/sound';
@@ -429,11 +429,11 @@ function reducer(state: AppState, action: Action): AppState {
     case 'reset':
       return {
         ...state,
-        data: { ...seedState(Date.now()), resetAt: Date.now() },
+        data: { ...emptyState(), resetAt: Date.now() },
         session: null,
         overlay: null,
         screen: 'home',
-        toast: 'Fresh start — day-one state restored. The meter already moved: design doc, 10 XP.'
+        toast: 'Fresh start — everything wiped. Blank slate.'
       };
 
     case 'sync-adopt':
@@ -459,7 +459,7 @@ const StoreContext = createContext<Store | null>(null);
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, undefined, () => ({
-    data: seedState(Date.now()),
+    data: emptyState(),
     screen: 'home' as Screen,
     session: null,
     overlay: null,
@@ -477,7 +477,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const stored = await loadState();
       if (cancelled) return;
       adoptingRef.current = true; // hydration is not a local mutation — don't mark sync dirty
-      dispatch({ type: 'hydrate', data: stored ?? seedState(Date.now()) });
+      dispatch({ type: 'hydrate', data: stored ?? emptyState() });
       syncManager.init(
         () => dataRef.current,
         (data) => {

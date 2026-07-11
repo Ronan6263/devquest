@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store';
 import { levelInfo } from '../lib/levels';
 import { exportJson, validateImport } from '../lib/db';
+import { syncManager, type SyncStatus } from '../lib/sync';
 import { label } from '../components/bits';
 
 const THEMES = [
@@ -10,6 +11,108 @@ const THEMES = [
   { name: 'CRT', level: 6, desc: 'Green phosphor scanlines. Pure dopamine.', swatch: 'linear-gradient(135deg,#03170a,#25f07a)' },
   { name: 'Blueprint', level: 9, desc: 'Cyan grid on navy. Drafting-table mode.', swatch: 'linear-gradient(135deg,#0a1c3a,#4d9fff)' }
 ];
+
+function timeAgo(ts: number): string {
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if (s < 5) return 'just now';
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  return `${Math.floor(s / 3600)}h ago`;
+}
+
+function SyncCard() {
+  const [status, setStatus] = useState<SyncStatus>({ state: 'disabled' });
+  const [passcode, setPasscode] = useState('');
+  const [show, setShow] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [, forceTick] = useState(0);
+
+  useEffect(() => syncManager.subscribe(setStatus), []);
+  // refresh the "last synced Xs ago" line
+  useEffect(() => {
+    const t = setInterval(() => forceTick((n) => n + 1), 5000);
+    return () => clearInterval(t);
+  }, []);
+
+  const enable = async () => {
+    if (passcode.trim().length < 8) return;
+    setBusy(true);
+    try {
+      await syncManager.enable(passcode.trim());
+      setPasscode('');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const dot =
+    status.state === 'idle' ? 'var(--success)'
+    : status.state === 'syncing' ? 'var(--accent)'
+    : status.state === 'disabled' ? 'var(--text-faint)'
+    : '#D4A72B';
+  const statusLine =
+    status.state === 'idle' ? `SYNCED${status.lastSyncAt ? ` · ${timeAgo(status.lastSyncAt)}` : ''}`
+    : status.state === 'syncing' ? 'SYNCING…'
+    : status.state === 'offline' ? 'OFFLINE · will retry when back online'
+    : status.state === 'error' ? `SYNC PAUSED · ${status.detail ?? 'error'}`
+    : 'DISABLED';
+
+  return (
+    <div className="dq-card" style={{ borderRadius: 6, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ ...label, letterSpacing: '.16em' }}>AUTO-SYNC · DESKTOP ⇄ PHONE</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 10, letterSpacing: '.1em', color: 'var(--text-dim)' }}>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: dot }} />
+          {statusLine}
+        </span>
+      </div>
+
+      {!syncManager.enabled ? (
+        <>
+          <div style={{ fontSize: 11, color: 'var(--text-dim2)', lineHeight: 1.6 }}>
+            No account — just a passcode. It becomes both the address and the encryption key: enter the
+            same one on your other device and they meet in the middle. Everything is encrypted on-device
+            before upload; the relay only ever sees ciphertext. Pick a long, unique phrase (8+ chars) —
+            anyone who guesses it could read or overwrite your sync data.
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              className="dq-input"
+              type={show ? 'text' : 'password'}
+              placeholder="sync passcode — e.g. cursed-toaster-teeth-9931"
+              value={passcode}
+              maxLength={64}
+              style={{ flex: 1 }}
+              onChange={(e) => setPasscode(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') void enable(); }}
+            />
+            <button className="dq-btn-ghost muted" onClick={() => setShow(!show)}>{show ? '🙈' : '👁'}</button>
+          </div>
+          <button
+            className="dq-btn-solid"
+            disabled={busy || passcode.trim().length < 8}
+            style={{ fontSize: 12, padding: '10px 18px', opacity: busy || passcode.trim().length < 8 ? 0.5 : 1 }}
+            onClick={() => void enable()}
+          >
+            {busy ? 'CONNECTING…' : 'ENABLE AUTO-SYNC'}
+          </button>
+        </>
+      ) : (
+        <>
+          <div style={{ fontSize: 11, color: 'var(--text-dim2)', lineHeight: 1.6 }}>
+            Syncs on launch, every minute while open, when the app returns to foreground, and a moment
+            after every change. Work done offline on both devices merges — XP adds up, done is done,
+            deletions stay deleted. Enter the same passcode on your other device to link it.
+          </div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button className="dq-btn-ghost" onClick={() => void syncManager.syncNow()}>SYNC NOW ⟳</button>
+            <button className="dq-btn-ghost muted" onClick={() => syncManager.disable()}>DISABLE</button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 export function Config({ wide }: { wide: boolean }) {
   const { state, dispatch } = useStore();
@@ -91,10 +194,13 @@ export function Config({ wide }: { wide: boolean }) {
         </div>
       </div>
 
+      <SyncCard />
+
       <div className="dq-card" style={{ borderRadius: 6, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div style={{ ...label, letterSpacing: '.16em' }}>SYNC · DESKTOP ⇄ PHONE</div>
+        <div style={{ ...label, letterSpacing: '.16em' }}>BACKUP · JSON FILE</div>
         <div style={{ fontSize: 11, color: 'var(--text-dim2)', lineHeight: 1.6 }}>
-          Manual for v1: export the JSON here, import it on the other device. Cloud sync is v2.
+          Manual export/import — a local backup, or one-off transfer without sync. Importing replaces
+          this device's state and wins the next sync merge.
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
           <button className="dq-btn-ghost" onClick={() => exportJson(data)}>EXPORT JSON ⭳</button>

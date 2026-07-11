@@ -66,6 +66,10 @@ export interface PersistedState {
   tasks: Task[];
   sessions: SessionRecord[];
   achievements: AchievementState[];
+  /** Tombstones for deleted entities so sync merges don't resurrect them. */
+  deletedIds?: string[];
+  /** Bumped on reset/import — the side with the newer resetAt wins a merge wholesale. */
+  resetAt?: number;
 }
 
 /** Live (un-persisted) session. */

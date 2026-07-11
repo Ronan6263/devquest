@@ -6,6 +6,7 @@ import { SIZE_XP, levelInfo } from './lib/levels';
 import { evaluateAuto, defById } from './lib/achievements';
 import { loadState, saveState } from './lib/db';
 import { seedState } from './lib/seed';
+import { syncManager } from './lib/sync';
 import { weekKey } from './lib/time';
 import { playLevelUp, playXpGain } from './lib/sound';
 
@@ -41,6 +42,7 @@ type Action =
   | { type: 'set-handle'; handle: string }
   | { type: 'import'; data: PersistedState }
   | { type: 'reset' }
+  | { type: 'sync-adopt'; data: PersistedState }
   | { type: 'toast'; message: string }
   | { type: 'dismiss-toast' };
 
@@ -244,7 +246,14 @@ function reducer(state: AppState, action: Action): AppState {
       if (task.status === 'done') {
         return { ...state, toast: 'Done tasks are history — their XP is banked. Only todo tasks can be removed.' };
       }
-      return { ...state, data: { ...state.data, tasks: state.data.tasks.filter((t) => t.id !== action.taskId) } };
+      return {
+        ...state,
+        data: {
+          ...state.data,
+          tasks: state.data.tasks.filter((t) => t.id !== action.taskId),
+          deletedIds: [...(state.data.deletedIds ?? []), task.id]
+        }
+      };
     }
 
     case 'edit-task': {
@@ -326,13 +335,15 @@ function reducer(state: AppState, action: Action): AppState {
       const p = state.data.projects.find((x) => x.id === action.projectId);
       if (!p) return state;
       const questIds = state.data.quests.filter((q) => q.projectId === p.id).map((q) => q.id);
+      const removedTaskIds = state.data.tasks.filter((t) => questIds.includes(t.questId)).map((t) => t.id);
       return {
         ...state,
         data: {
           ...state.data,
           projects: state.data.projects.filter((x) => x.id !== p.id),
           quests: state.data.quests.filter((q) => q.projectId !== p.id),
-          tasks: state.data.tasks.filter((t) => !questIds.includes(t.questId))
+          tasks: state.data.tasks.filter((t) => !questIds.includes(t.questId)),
+          deletedIds: [...(state.data.deletedIds ?? []), p.id, ...questIds, ...removedTaskIds]
         },
         toast: `Project ${p.name} deleted. Your level and XP are untouched — projects die, the player's level doesn't.`
       };
@@ -383,12 +394,14 @@ function reducer(state: AppState, action: Action): AppState {
     case 'delete-quest': {
       const q = state.data.quests.find((x) => x.id === action.questId);
       if (!q) return state;
+      const removedTaskIds = state.data.tasks.filter((t) => t.questId === q.id).map((t) => t.id);
       return {
         ...state,
         data: {
           ...state.data,
           quests: state.data.quests.filter((x) => x.id !== q.id),
-          tasks: state.data.tasks.filter((t) => t.questId !== q.id)
+          tasks: state.data.tasks.filter((t) => t.questId !== q.id),
+          deletedIds: [...(state.data.deletedIds ?? []), q.id, ...removedTaskIds]
         },
         toast: `Quest "${q.title}" deleted. Banked XP stays banked.`
       };
@@ -406,17 +419,25 @@ function reducer(state: AppState, action: Action): AppState {
     }
 
     case 'import':
-      return { ...state, data: action.data, toast: 'Import complete — state replaced.' };
+      // resetAt makes an import authoritative: it wins a sync merge wholesale
+      return {
+        ...state,
+        data: { ...action.data, resetAt: Date.now() },
+        toast: 'Import complete — state replaced.'
+      };
 
     case 'reset':
       return {
         ...state,
-        data: seedState(Date.now()),
+        data: { ...seedState(Date.now()), resetAt: Date.now() },
         session: null,
         overlay: null,
         screen: 'home',
         toast: 'Fresh start — day-one state restored. The meter already moved: design doc, 10 XP.'
       };
+
+    case 'sync-adopt':
+      return { ...state, data: action.data };
 
     case 'toast':
       return { ...state, toast: action.message };
@@ -446,23 +467,41 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     hydrated: false
   }));
 
-  // hydrate from IndexedDB once
+  // hydrate from IndexedDB once, then bring the sync engine up
+  const dataRef = useRef(state.data);
+  dataRef.current = state.data;
+  const adoptingRef = useRef(false);
   useEffect(() => {
     let cancelled = false;
     (async () => {
       const stored = await loadState();
-      if (!cancelled) dispatch({ type: 'hydrate', data: stored ?? seedState(Date.now()) });
+      if (cancelled) return;
+      adoptingRef.current = true; // hydration is not a local mutation — don't mark sync dirty
+      dispatch({ type: 'hydrate', data: stored ?? seedState(Date.now()) });
+      syncManager.init(
+        () => dataRef.current,
+        (data) => {
+          adoptingRef.current = true;
+          dispatch({ type: 'sync-adopt', data });
+        },
+        (message) => dispatch({ type: 'toast', message })
+      );
     })();
     return () => { cancelled = true; };
   }, []);
 
-  // persist on every data mutation (after hydration)
+  // persist on every data mutation (after hydration); adopted remote states don't re-trigger a push
   const lastData = useRef<PersistedState | null>(null);
   useEffect(() => {
     if (!state.hydrated) return;
     if (lastData.current === state.data) return;
     lastData.current = state.data;
     saveState(state.data);
+    if (adoptingRef.current) {
+      adoptingRef.current = false;
+    } else {
+      syncManager.localChanged();
+    }
   }, [state.hydrated, state.data]);
 
   // reward-moment sound

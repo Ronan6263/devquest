@@ -1,4 +1,5 @@
 import type { AchievementState, PersistedState } from '../types';
+import { SIZE_XP } from './levels';
 
 /**
  * Passcode-only auto-sync. The passcode deterministically derives BOTH the
@@ -178,7 +179,12 @@ export function mergeStates(local: Envelope, remote: Envelope, lastSyncedXp: num
   };
 
   // XP is additive — three-way counter merge so parallel offline work adds up.
-  const base = Math.min(lastSyncedXp, local.state.player.xp, remote.state.player.xp);
+  // Before the first sync there is no common stamp, but both devices grew from
+  // the same seed (10 XP) — use that as the base so the seed isn't double-counted.
+  const fallbackBase = Math.min(SIZE_XP.S, local.state.player.xp, remote.state.player.xp);
+  const base = lastSyncedXp > 0
+    ? Math.min(lastSyncedXp, local.state.player.xp, remote.state.player.xp)
+    : fallbackBase;
   const xp = local.state.player.xp + remote.state.player.xp - base;
 
   return {
@@ -192,6 +198,21 @@ export function mergeStates(local: Envelope, remote: Envelope, lastSyncedXp: num
     deletedIds: [...tombstones],
     resetAt: lReset || undefined
   };
+}
+
+/**
+ * An untouched day-one install: no sessions, no proof earns, no deletions,
+ * seed XP only. Linking a pristine device should adopt the remote wholesale
+ * instead of "merging" a blank slate into real work.
+ */
+export function isPristineSeed(state: PersistedState): boolean {
+  return (
+    state.sessions.length === 0 &&
+    state.player.xp === SIZE_XP.S &&
+    !(state.deletedIds ?? []).length &&
+    state.tasks.filter((t) => t.status === 'done').length <= 1 &&
+    state.tasks.every((t) => t.id.startsWith('t-'))
+  );
 }
 
 // ---------- manager ----------
@@ -331,7 +352,8 @@ class SyncManager {
         await this.push(localState, meta);
       } else if (remote.updatedAt === meta.lastRemoteStamp) {
         if (meta.dirty) await this.push(localState, meta);
-      } else if (!meta.dirty) {
+      } else if (!meta.dirty || (meta.lastRemoteStamp === 0 && isPristineSeed(localState))) {
+        // clean pull — or a fresh install linking up for the first time
         this.adopt(remote.state);
         this.saveMeta({ lastRemoteStamp: remote.updatedAt, lastSyncedXp: remote.state.player.xp, dirty: false });
         this.toast?.('Synced — picked up changes from your other device.');

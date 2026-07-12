@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { useStore, activeProjectCap, taskOrder } from '../store';
+import { Fragment, useEffect, useRef, useState } from 'react';
+import { useStore, activeProjectCap, taskOrder, questOrder } from '../store';
 import { SIZE_XP, TAG_COLORS } from '../lib/levels';
 import { TagBadge, taskTag, label, Bar } from '../components/bits';
 import type { Project, Quest, Task, TaskSize, TaskTag } from '../types';
@@ -666,7 +666,14 @@ function ProjectCard({ project, onOpen }: { project: Project; onOpen: () => void
   );
 }
 
-function QuestCard({ quest }: { quest: Quest }) {
+interface QuestDragHandle {
+  dragging: boolean;
+  onDown: (e: React.PointerEvent) => void;
+  onMove: (e: React.PointerEvent) => void;
+  onUp: (e: React.PointerEvent) => void;
+}
+
+function QuestCard({ quest, dragHandle }: { quest: Quest; dragHandle: QuestDragHandle | null }) {
   const { state, dispatch } = useStore();
   const [armed, fire] = useArmed();
   const [editing, setEditing] = useState(false);
@@ -707,6 +714,24 @@ function QuestCard({ quest }: { quest: Quest }) {
             {quest.status === 'done' && <span style={{ color: 'var(--text-faint)' }}> · DONE</span>}
           </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {dragHandle && (
+              <button
+                onPointerDown={dragHandle.onDown}
+                onPointerMove={dragHandle.onMove}
+                onPointerUp={dragHandle.onUp}
+                onPointerCancel={dragHandle.onUp}
+                title="drag to reorder quest"
+                aria-label={`drag to reorder quest ${quest.title}`}
+                style={{
+                  ...rowIconStyle, padding: '4px 7px', fontSize: 13,
+                  color: dragHandle.dragging ? 'var(--accent)' : 'var(--text-dim2)',
+                  cursor: dragHandle.dragging ? 'grabbing' : 'grab',
+                  touchAction: 'none'
+                }}
+              >
+                ⠿
+              </button>
+            )}
             <EditButton
               thing={`quest ${quest.title}`}
               onClick={() => {
@@ -808,6 +833,90 @@ function SectionDivider({ text }: { text: string }) {
 const questRank = (q: Quest) => (q.status === 'active' ? 0 : q.status === 'done' ? 1 : 2);
 const QUEST_SECTION: Record<number, string> = { 1: 'COMPLETED', 2: 'PARKED' };
 
+const QUEST_GAP = 16;
+
+/** Drag-to-reorder for quest cards, scoped to one status group (active / done / parked). */
+function QuestGroup({ quests }: { quests: Quest[] }) {
+  const { dispatch } = useStore();
+  const listRef = useRef<HTMLDivElement>(null);
+  const rects = useRef<{ id: string; mid: number; height: number }[]>([]);
+  const [drag, setDrag] = useState<{
+    id: string; from: number; startY: number; dy: number; target: number; height: number;
+  } | null>(null);
+
+  const canReorder = quests.length > 1;
+
+  const handleDown = (quest: Quest, index: number) => (e: React.PointerEvent) => {
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    const rows = Array.from(listRef.current?.querySelectorAll<HTMLElement>('[data-quest-row]') ?? []);
+    rects.current = rows.map((el) => {
+      const r = el.getBoundingClientRect();
+      return { id: el.dataset.questRow!, mid: r.top + r.height / 2, height: r.height };
+    });
+    setDrag({
+      id: quest.id, from: index, startY: e.clientY, dy: 0, target: index,
+      height: rects.current[index]?.height ?? 80
+    });
+  };
+
+  const handleMove = (e: React.PointerEvent) => {
+    if (!drag) return;
+    const dy = e.clientY - drag.startY;
+    const center = rects.current[drag.from].mid + dy;
+    const others = rects.current.filter((r) => r.id !== drag.id);
+    let target = others.findIndex((o) => center < o.mid);
+    if (target === -1) target = others.length;
+    setDrag((d) => (d ? { ...d, dy, target } : d));
+  };
+
+  const handleUp = () => {
+    if (!drag) return;
+    if (drag.target !== drag.from) {
+      dispatch({ type: 'reorder-quest', questId: drag.id, toIndex: drag.target });
+    }
+    setDrag(null);
+  };
+
+  return (
+    <div ref={listRef} style={{ display: 'flex', flexDirection: 'column', gap: QUEST_GAP, userSelect: drag ? 'none' : undefined }}>
+      {quests.map((q, i) => {
+        const dragging = drag?.id === q.id;
+        let shift = 0;
+        if (drag && !dragging) {
+          if (drag.from < drag.target && i > drag.from && i <= drag.target) shift = -(drag.height + QUEST_GAP);
+          else if (drag.from > drag.target && i >= drag.target && i < drag.from) shift = drag.height + QUEST_GAP;
+        }
+        return (
+          <div
+            key={q.id}
+            data-quest-row={q.id}
+            style={{
+              transform: dragging ? `translateY(${drag!.dy}px) scale(1.005)` : shift ? `translateY(${shift}px)` : undefined,
+              transition: dragging ? 'none' : drag ? 'transform .15s ease' : undefined,
+              position: dragging ? 'relative' : undefined,
+              zIndex: dragging ? 5 : undefined,
+              outline: dragging ? '1px solid var(--accent)' : undefined,
+              borderRadius: dragging ? 6 : undefined,
+              boxShadow: dragging ? '0 12px 32px rgba(0,0,0,.55)' : undefined
+            }}
+          >
+            <QuestCard
+              quest={q}
+              dragHandle={canReorder ? {
+                dragging,
+                onDown: handleDown(q, i),
+                onMove: handleMove,
+                onUp: handleUp
+              } : null}
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /** Drill-down: one project's header + its quests, with creation scoped to it. */
 function ProjectDetail({ project, onBack }: { project: Project; onBack: () => void }) {
   const { state, dispatch } = useStore();
@@ -818,7 +927,12 @@ function ProjectDetail({ project, onBack }: { project: Project; onBack: () => vo
 
   const quests = data.quests
     .filter((q) => q.projectId === project.id)
-    .sort((a, b) => questRank(a) - questRank(b) || a.createdAt - b.createdAt);
+    .sort((a, b) => questRank(a) - questRank(b) || questOrder(a) - questOrder(b));
+  const groups: [string | null, Quest[]][] = [
+    [null, quests.filter((q) => q.status === 'active')],
+    [QUEST_SECTION[1], quests.filter((q) => q.status === 'done')],
+    [QUEST_SECTION[2], quests.filter((q) => q.status === 'parked')]
+  ];
   const tasks = data.tasks.filter((t) => quests.some((q) => q.id === t.questId));
   const done = tasks.filter((t) => t.status === 'done').length;
 
@@ -890,15 +1004,14 @@ function ProjectDetail({ project, onBack }: { project: Project; onBack: () => vo
         </div>
       )}
 
-      {quests.map((q, i) => {
-        const startsSection = questRank(q) > 0 && (i === 0 || questRank(quests[i - 1]) !== questRank(q));
-        return (
-          <div key={q.id} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {startsSection && <SectionDivider text={QUEST_SECTION[questRank(q)]} />}
-            <QuestCard quest={q} />
-          </div>
-        );
-      })}
+      {groups.map(([sectionLabel, list]) =>
+        list.length > 0 && (
+          <Fragment key={sectionLabel ?? 'active'}>
+            {sectionLabel && <SectionDivider text={sectionLabel} />}
+            <QuestGroup quests={list} />
+          </Fragment>
+        )
+      )}
     </div>
   );
 }

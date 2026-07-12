@@ -264,6 +264,53 @@ describe('set-task-description', () => {
   });
 });
 
+describe('reorder-quest', () => {
+  it('reorders parked quests and the session roll follows the new order', () => {
+    const st = base({
+      projects: [project()],
+      quests: [
+        quest(), // active
+        quest({ id: 'qA', title: 'Parked A', status: 'parked', createdAt: 2 }),
+        quest({ id: 'qB', title: 'Parked B', status: 'parked', createdAt: 3 })
+      ],
+      tasks: [
+        task(),
+        task({ id: 'tA', questId: 'qA', createdAt: 2 }),
+        task({ id: 'tB', questId: 'qB', createdAt: 3 })
+      ]
+    });
+    // drag Parked B above Parked A
+    let s = reducer(st, { type: 'reorder-quest', questId: 'qB', toIndex: 0 });
+    expect(s.data.quests.filter((q) => q.sortKey !== undefined)).toHaveLength(1); // only qB touched
+    // rolling out of the active quest now hits B first
+    s = reducer(s, { type: 'start-session' });
+    s = reducer(s, { type: 'toggle-check', taskId: 't1' });
+    expect(s.session?.taskId).toBe('tB');
+    s = reducer(s, { type: 'toggle-check', taskId: 'tB' });
+    expect(s.session?.taskId).toBe('tA');
+  });
+
+  it('stays within the status group and clamps out-of-range targets', () => {
+    const st = base({
+      projects: [project()],
+      quests: [
+        quest(), // active — alone in its group
+        quest({ id: 'qA', status: 'parked', createdAt: 2 }),
+        quest({ id: 'qB', status: 'parked', createdAt: 3 })
+      ]
+    });
+    // active quest has no siblings: no-op
+    expect(reducer(st, { type: 'reorder-quest', questId: 'q1', toIndex: 5 }).data).toBe(st.data);
+    // clamped move inside the parked group
+    const s = reducer(st, { type: 'reorder-quest', questId: 'qA', toIndex: 99 });
+    const parked = s.data.quests
+      .filter((q) => q.status === 'parked')
+      .sort((a, b) => (a.sortKey ?? a.createdAt) - (b.sortKey ?? b.createdAt))
+      .map((q) => q.id);
+    expect(parked).toEqual(['qB', 'qA']);
+  });
+});
+
 describe('edit-quest project move', () => {
   it('moves a quest to another project, parking it if that project already has an active quest', () => {
     const st = base({

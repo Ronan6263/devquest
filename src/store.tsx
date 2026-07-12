@@ -42,6 +42,7 @@ type Action =
   | { type: 'toggle-project'; projectId: string }
   | { type: 'delete-project'; projectId: string }
   | { type: 'add-quest'; projectId: string; title: string; dod: string }
+  | { type: 'reorder-quest'; questId: string; toIndex: number }
   | { type: 'toggle-quest'; questId: string }
   | { type: 'delete-quest'; questId: string }
   | { type: 'toggle-sound' }
@@ -68,6 +69,7 @@ const activeQuestOf = (data: PersistedState, projectId: string) =>
 
 /** Effective ordering position: manual override first, creation time otherwise. */
 export const taskOrder = (t: Task) => t.sortKey ?? t.createdAt;
+export const questOrder = (q: Quest) => q.sortKey ?? q.createdAt;
 
 /**
  * Next-ignition queue: first todo task, active quests first (in creation
@@ -81,7 +83,7 @@ export function nextQueuedTask(data: PersistedState, excludeIds?: Set<string>): 
       .sort((a, b) => {
         const pa = a.status === 'active' ? 0 : 1;
         const pb = b.status === 'active' ? 0 : 1;
-        return pa - pb || a.createdAt - b.createdAt;
+        return pa - pb || questOrder(a) - questOrder(b);
       })
       .map((q, i) => [q.id, i])
   );
@@ -102,7 +104,7 @@ export function nextSessionTask(data: PersistedState, excludeIds: Set<string>, p
     data.quests
       .filter((q) => q.projectId === projectId && q.status !== 'done')
       .sort((a, b) =>
-        (a.status === 'active' ? 0 : 1) - (b.status === 'active' ? 0 : 1) || a.createdAt - b.createdAt)
+        (a.status === 'active' ? 0 : 1) - (b.status === 'active' ? 0 : 1) || questOrder(a) - questOrder(b))
       .map((q, i) => [q.id, i])
   );
   const todo = data.tasks
@@ -497,6 +499,28 @@ export function reducer(state: AppState, action: Action): AppState {
             : `Quest parked — ${project.name} is a parked project.`
           : `Quest "${title}" is live.`
       };
+    }
+
+    case 'reorder-quest': {
+      const quest = state.data.quests.find((q) => q.id === action.questId);
+      if (!quest) return state;
+      // reorder within the same project + status group (matches how lists render and how rolls pick)
+      const siblings = state.data.quests
+        .filter((q) => q.projectId === quest.projectId && q.status === quest.status)
+        .sort((a, b) => questOrder(a) - questOrder(b));
+      const from = siblings.findIndex((q) => q.id === quest.id);
+      const to = Math.max(0, Math.min(siblings.length - 1, action.toIndex));
+      if (from === to) return state;
+      const without = siblings.filter((q) => q.id !== quest.id);
+      const prev = without[to - 1];
+      const next = without[to];
+      const sortKey =
+        prev && next ? (questOrder(prev) + questOrder(next)) / 2
+        : prev ? questOrder(prev) + 1000
+        : next ? questOrder(next) - 1000
+        : quest.createdAt;
+      const quests = state.data.quests.map((q) => (q.id === quest.id ? { ...q, sortKey } : q));
+      return { ...state, data: { ...state.data, quests } };
     }
 
     case 'toggle-quest': {

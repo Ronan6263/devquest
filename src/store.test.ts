@@ -95,6 +95,37 @@ describe('sessions', () => {
     expect(s.data.player.xp).toBe(taskXp + Math.round(taskXp * 0.5));
   });
 
+  it('checking the current task auto-pulls the next queued task into the session', () => {
+    const st = populated();
+    st.data.tasks.push(task({ id: 't2', title: 'Second', createdAt: 2 }), task({ id: 't3', title: 'Third', createdAt: 3 }));
+    let s = reducer(st, { type: 'start-session' });
+    expect(s.session?.taskId).toBe('t1');
+    s = reducer(s, { type: 'toggle-check', taskId: 't1' });
+    expect(s.session?.taskId).toBe('t2');
+    expect(s.toast).toContain('Second');
+    s = reducer(s, { type: 'toggle-check', taskId: 't2' });
+    expect(s.session?.taskId).toBe('t3');
+    // queue exhausted: current stays put
+    s = reducer(s, { type: 'toggle-check', taskId: 't3' });
+    expect(s.session?.taskId).toBe('t3');
+    // un-checking an earlier task doesn't yank the current one away
+    s = reducer(s, { type: 'toggle-check', taskId: 't1' });
+    expect(s.session?.taskId).toBe('t3');
+  });
+
+  it('ending a rolling session banks every checked task', () => {
+    const st = populated();
+    st.data.tasks.push(task({ id: 't2', title: 'Second', size: 'M', createdAt: 2 }));
+    let s = reducer(st, { type: 'start-session' });
+    s = reducer(s, { type: 'toggle-check', taskId: 't1' });
+    s = reducer(s, { type: 'toggle-check', taskId: 't2' });
+    s = reducer(s, { type: 'end-session', now: s.session!.startedAt + 120_000 });
+    expect(s.data.tasks.every((t) => t.status === 'done')).toBe(true);
+    const taskXp = SIZE_XP.S + SIZE_XP.M;
+    expect(s.overlay?.earned).toBe(taskXp + Math.round(taskXp * 0.5)); // + quest-complete bonus
+    expect(s.overlay?.lines.filter((l) => !l.title.startsWith('QUEST'))).toHaveLength(2);
+  });
+
   it('hydrate resumes a live session only when its task is still todo', () => {
     const live = { id: 's1', taskId: 't1', startedAt: 123, checked: {} };
     const good = reducer(base(), { type: 'hydrate', data: populated().data, session: live });

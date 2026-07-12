@@ -72,9 +72,10 @@ export const taskOrder = (t: Task) => t.sortKey ?? t.createdAt;
 /**
  * Next-ignition queue: first todo task, active quests first (in creation
  * order), tasks in queue order within a quest. Pre-loaded before the
- * current session ends.
+ * current session ends. `excludeIds` skips tasks already checked in a live
+ * session (they're still 'todo' in data until the session banks them).
  */
-export function nextQueuedTask(data: PersistedState): Task | null {
+export function nextQueuedTask(data: PersistedState, excludeIds?: Set<string>): Task | null {
   const questRank = new Map(
     [...data.quests]
       .sort((a, b) => {
@@ -85,7 +86,7 @@ export function nextQueuedTask(data: PersistedState): Task | null {
       .map((q, i) => [q.id, i])
   );
   const todo = data.tasks
-    .filter((t) => t.status === 'todo' && questRank.has(t.questId) &&
+    .filter((t) => t.status === 'todo' && !excludeIds?.has(t.id) && questRank.has(t.questId) &&
       data.quests.find((q) => q.id === t.questId)!.status === 'active')
     .sort((a, b) => (questRank.get(a.questId)! - questRank.get(b.questId)!) || taskOrder(a) - taskOrder(b));
   return todo[0] ?? null;
@@ -121,8 +122,20 @@ export function reducer(state: AppState, action: Action): AppState {
 
     case 'toggle-check': {
       if (!state.session) return state;
-      const checked = { ...state.session.checked, [action.taskId]: !state.session.checked[action.taskId] };
-      return { ...state, session: { ...state.session, checked } };
+      const s = state.session;
+      const checked = { ...s.checked, [action.taskId]: !s.checked[action.taskId] };
+      let taskId = s.taskId;
+      let toast = state.toast;
+      // completing the current task pulls the next one in — productive sessions keep rolling
+      if (action.taskId === s.taskId && checked[action.taskId]) {
+        const banked = new Set(Object.keys(checked).filter((k) => checked[k]));
+        const next = nextQueuedTask(state.data, banked);
+        if (next) {
+          taskId = next.id;
+          toast = `Banked · next up: ${next.title}`;
+        }
+      }
+      return { ...state, session: { ...s, taskId, checked }, toast };
     }
 
     case 'end-session': {

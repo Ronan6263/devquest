@@ -12,12 +12,12 @@ function ProofModal({ def, onLog, onClose }: { def: AchievementDef; onLog: (proo
         position: 'absolute', inset: 0, zIndex: 58, background: 'rgba(10,9,7,.88)', backdropFilter: 'blur(2px)',
         display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24
       }}
-      onClick={onClose}
+      // close only when the press starts on the backdrop, not when a drag ends on it
+      onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
         className="dq-card"
         style={{ width: '100%', maxWidth: 380, padding: 18, border: '1px solid var(--accent)', display: 'flex', flexDirection: 'column', gap: 12, animation: 'dq-rise .2s ease both' }}
-        onClick={(e) => e.stopPropagation()}
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span style={{ fontSize: 18 }}>{def.icon}</span>

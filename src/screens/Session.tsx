@@ -3,6 +3,7 @@ import { useStore } from '../store';
 import { SIZE_XP } from '../lib/levels';
 import { formatClock } from '../lib/time';
 import { TagBadge, SizeChip, taskTag } from '../components/bits';
+import type { Task } from '../types';
 
 export function Session() {
   const { state, dispatch } = useStore();
@@ -35,7 +36,16 @@ export function Session() {
   };
 
   const counts = elapsed >= 90;
-  const xp = SIZE_XP[task.size];
+  const checkedIds = Object.keys(session.checked).filter((k) => session.checked[k]);
+  const bankedTasks = checkedIds
+    .filter((id) => id !== task.id)
+    .map((id) => state.data.tasks.find((t) => t.id === id))
+    .filter((t): t is Task => !!t);
+  const totalXp = checkedIds.reduce((a, id) => {
+    const t = state.data.tasks.find((x) => x.id === id);
+    return a + (t ? SIZE_XP[t.size] : 0);
+  }, 0);
+  const anyChecked = checkedIds.length > 0;
 
   return (
     <div style={{
@@ -65,7 +75,9 @@ export function Session() {
         <div style={{ fontSize: 11, letterSpacing: '.2em', color: 'var(--text-dim2)' }}>
           {project?.name} · {quest?.title}
         </div>
-        <div style={{ fontSize: 12, letterSpacing: '.24em', color: 'var(--text-dim)' }}>— THIS SESSION'S ONE TASK —</div>
+        <div style={{ fontSize: 12, letterSpacing: '.24em', color: 'var(--text-dim)' }}>
+          {bankedTasks.length ? `— TASK ${bankedTasks.length + 1} · KEEP ROLLING —` : '— CURRENT TASK —'}
+        </div>
         <button
           onClick={() => dispatch({ type: 'toggle-check', taskId: task.id })}
           style={{
@@ -104,8 +116,34 @@ export function Session() {
           </div>
         )}
         <div style={{ fontSize: 11, color: 'var(--text-dim2)', maxWidth: 340, lineHeight: 1.7 }}>
-          Tap the task when it's done. XP is only awarded for this pre-defined task — you can't retroactively invent XP.
+          Tap the task when it's done — the next one pulls in automatically. XP is only awarded for
+          pre-defined tasks; END whenever the roll stops.
         </div>
+
+        {bankedTasks.length > 0 && (
+          <div style={{ width: '100%', maxWidth: 420, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ fontSize: 10, letterSpacing: '.16em', color: 'var(--text-dim2)', textAlign: 'left' }}>
+              BANKED THIS SESSION
+            </div>
+            {bankedTasks.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => dispatch({ type: 'toggle-check', taskId: t.id })}
+                title="tap to un-check"
+                aria-label={`un-check ${t.title}`}
+                style={{
+                  display: 'flex', gap: 10, alignItems: 'center', fontSize: 12, padding: '8px 10px',
+                  background: 'var(--bg-inset)', border: '1px solid var(--border-dim)', borderRadius: 4,
+                  color: 'var(--text-dim)', cursor: 'pointer', textAlign: 'left'
+                }}
+              >
+                <span style={{ color: 'var(--success)', flex: 'none' }}>✓</span>
+                <span style={{ flex: 1, textDecoration: 'line-through' }}>{t.title}</span>
+                <span style={{ color: 'var(--accent)', fontWeight: 700, flex: 'none' }}>+{SIZE_XP[t.size]}</span>
+              </button>
+            ))}
+          </div>
+        )}
 
         {quest && !capturing && (
           <button
@@ -150,11 +188,11 @@ export function Session() {
           style={{
             width: '100%', border: 'none', cursor: 'pointer', fontWeight: 800, fontSize: 15,
             letterSpacing: '.08em', padding: 16, borderRadius: 6,
-            background: checked ? 'var(--accent)' : '#2a2a27',
-            color: checked ? 'var(--on-accent)' : 'var(--text-dim)'
+            background: anyChecked ? 'var(--accent)' : '#2a2a27',
+            color: anyChecked ? 'var(--on-accent)' : 'var(--text-dim)'
           }}
         >
-          {checked ? `END SESSION · CLAIM +${xp} XP` : 'END SESSION'}
+          {anyChecked ? `END SESSION · CLAIM +${totalXp} XP` : 'END SESSION'}
         </button>
       </div>
     </div>

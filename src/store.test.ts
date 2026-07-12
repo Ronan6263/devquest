@@ -28,16 +28,16 @@ const task = (over: Partial<Task> = {}): Task => ({
 describe('add-project', () => {
   it('creates active while slots are free, parked once the cap is hit', () => {
     let s = base();
-    s = reducer(s, { type: 'add-project', name: 'one', color: '#111' });
-    s = reducer(s, { type: 'add-project', name: 'two', color: '#222' });
-    s = reducer(s, { type: 'add-project', name: 'three', color: '#333' });
+    s = reducer(s, { type: 'add-project', name: 'one', color: '#111', description: '', icon: '' });
+    s = reducer(s, { type: 'add-project', name: 'two', color: '#222', description: '', icon: '' });
+    s = reducer(s, { type: 'add-project', name: 'three', color: '#333', description: '', icon: '' });
     expect(s.data.projects.map((p) => p.status)).toEqual(['active', 'active', 'parked']);
   });
 
   it('rejects duplicate names', () => {
     let s = base();
-    s = reducer(s, { type: 'add-project', name: 'same', color: '#111' });
-    s = reducer(s, { type: 'add-project', name: 'SAME', color: '#222' });
+    s = reducer(s, { type: 'add-project', name: 'same', color: '#111', description: '', icon: '' });
+    s = reducer(s, { type: 'add-project', name: 'SAME', color: '#222', description: '', icon: '' });
     expect(s.data.projects).toHaveLength(1);
   });
 });
@@ -160,6 +160,39 @@ describe('reorder-task', () => {
     expect(order(s)).toEqual(['a', 'c', 'b']);
     // same position: no-op
     expect(reducer(s, { type: 'reorder-task', taskId: 'b', toIndex: 2 }).data).toBe(s.data);
+  });
+});
+
+describe('edit-quest project move', () => {
+  it('moves a quest to another project, parking it if that project already has an active quest', () => {
+    const st = base({
+      projects: [project(), project({ id: 'p2', name: 'OTHER' })],
+      quests: [quest(), quest({ id: 'q2', projectId: 'p2', title: 'Other quest' })]
+    });
+    const s = reducer(st, { type: 'edit-quest', questId: 'q1', title: 'Quest', dod: '—', projectId: 'p2' });
+    const moved = s.data.quests.find((q) => q.id === 'q1')!;
+    expect(moved.projectId).toBe('p2');
+    expect(moved.status).toBe('parked'); // p2 already has an active quest
+  });
+
+  it('keeps the quest active when the target project has a free quest slot', () => {
+    const st = base({
+      projects: [project(), project({ id: 'p2', name: 'OTHER' })],
+      quests: [quest()]
+    });
+    const s = reducer(st, { type: 'edit-quest', questId: 'q1', title: 'Quest', dod: '—', projectId: 'p2' });
+    const moved = s.data.quests.find((q) => q.id === 'q1')!;
+    expect(moved.projectId).toBe('p2');
+    expect(moved.status).toBe('active');
+  });
+
+  it('parks an active quest moved into a parked project', () => {
+    const st = base({
+      projects: [project(), project({ id: 'p2', name: 'OTHER', status: 'parked' })],
+      quests: [quest()]
+    });
+    const s = reducer(st, { type: 'edit-quest', questId: 'q1', title: 'Quest', dod: '—', projectId: 'p2' });
+    expect(s.data.quests[0].status).toBe('parked');
   });
 });
 

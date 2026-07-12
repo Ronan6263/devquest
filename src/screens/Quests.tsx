@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore, activeProjectCap, taskOrder } from '../store';
 import { SIZE_XP, TAG_COLORS } from '../lib/levels';
-import { TagBadge, taskTag, label } from '../components/bits';
+import { TagBadge, taskTag, label, Bar } from '../components/bits';
 import type { Project, Quest, Task, TaskSize, TaskTag } from '../types';
 
 const TAGS: TaskTag[] = ['systems', 'art', 'design', 'polish', 'biz'];
@@ -362,18 +362,17 @@ function TaskList({ tasks }: { tasks: Task[] }) {
   );
 }
 
-function NewQuest() {
-  const { state, dispatch } = useStore();
+/** Quest creation lives inside a project, so the parent is always explicit — never a stale default. */
+function NewQuest({ project }: { project: Project }) {
+  const { dispatch } = useStore();
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState('');
   const [dod, setDod] = useState('');
-  const [projectId, setProjectId] = useState('');
-  const projects = state.data.projects;
 
   if (!open) {
     return (
       <button
-        onClick={() => { setOpen(true); setProjectId(projects.find((p) => p.status === 'active')?.id ?? projects[0]?.id ?? ''); }}
+        onClick={() => setOpen(true)}
         style={{
           padding: '12px 14px', background: 'transparent', color: 'var(--text-dim)',
           border: '1px dashed var(--border-light)', borderRadius: 5, cursor: 'pointer', fontSize: 12,
@@ -386,32 +385,14 @@ function NewQuest() {
   }
 
   const submit = () => {
-    if (!title.trim() || !projectId) return;
-    dispatch({ type: 'add-quest', projectId, title, dod });
+    if (!title.trim()) return;
+    dispatch({ type: 'add-quest', projectId: project.id, title, dod });
     setTitle(''); setDod(''); setOpen(false);
   };
 
   return (
     <div className="dq-card" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10, borderColor: 'var(--border-light)' }}>
-      <div style={{ ...label, letterSpacing: '.16em' }}>NEW QUEST</div>
-      {projects.length === 0 ? (
-        <div style={{ fontSize: 11, color: 'var(--text-dim2)', lineHeight: 1.6 }}>
-          Quests live inside projects — create your first one in the PROJECTS card above, then come back here.
-        </div>
-      ) : (
-        <select
-          className="dq-input"
-          value={projectId}
-          onChange={(e) => setProjectId(e.target.value)}
-          style={{ appearance: 'none' }}
-        >
-          {projects.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}{p.status === 'parked' ? ' (parked)' : ''}
-            </option>
-          ))}
-        </select>
-      )}
+      <div style={{ ...label, letterSpacing: '.16em' }}>NEW QUEST · {project.name}</div>
       <input
         className="dq-input"
         autoFocus
@@ -441,28 +422,51 @@ function NewQuest() {
 function ProjectForm({
   initial, submitLabel, onSubmit, onCancel
 }: {
-  initial?: { name: string; color: string };
+  initial?: { name: string; color: string; description: string; icon: string };
   submitLabel: string;
-  onSubmit: (v: { name: string; color: string }) => void;
+  onSubmit: (v: { name: string; color: string; description: string; icon: string }) => void;
   onCancel: () => void;
 }) {
   const [name, setName] = useState(initial?.name ?? '');
   const [color, setColor] = useState(initial?.color ?? PROJECT_COLORS[0]);
+  const [description, setDescription] = useState(initial?.description ?? '');
+  const [icon, setIcon] = useState(initial?.icon ?? '');
 
   const submit = () => {
     if (!name.trim()) return;
-    onSubmit({ name, color });
+    onSubmit({ name, color, description, icon });
   };
 
   return (
     <div style={{ padding: 10, background: 'var(--bg-inset)', border: '1px solid var(--border)', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <input
+          className="dq-input"
+          aria-label="project icon"
+          placeholder="🎮"
+          title="optional emoji logo"
+          value={icon}
+          maxLength={4}
+          style={{ width: 52, textAlign: 'center', flex: 'none' }}
+          onChange={(e) => setIcon(e.target.value)}
+        />
+        <input
+          className="dq-input"
+          autoFocus
+          placeholder="project name"
+          value={name}
+          maxLength={32}
+          style={{ flex: 1 }}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') onCancel(); }}
+        />
+      </div>
       <input
         className="dq-input"
-        autoFocus
-        placeholder="project name"
-        value={name}
-        maxLength={32}
-        onChange={(e) => setName(e.target.value)}
+        placeholder="one-line description (optional)"
+        value={description}
+        maxLength={140}
+        onChange={(e) => setDescription(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') onCancel(); }}
       />
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -471,6 +475,7 @@ function ProjectForm({
             key={c}
             onClick={() => setColor(c)}
             title={c}
+            aria-label={`project color ${c}`}
             style={{
               width: 22, height: 22, borderRadius: 3, background: c, cursor: 'pointer',
               border: color === c ? '2px solid var(--text)' : '2px solid transparent'
@@ -495,9 +500,9 @@ function NewProject() {
       <button
         onClick={() => setOpen(true)}
         style={{
-          padding: '9px 12px', background: 'transparent', color: 'var(--text-dim2)',
-          border: '1px dashed var(--border-light)', borderRadius: 4, cursor: 'pointer', fontSize: 11,
-          letterSpacing: '.1em', textAlign: 'left'
+          padding: '12px 14px', background: 'transparent', color: 'var(--text-dim)',
+          border: '1px dashed var(--border-light)', borderRadius: 5, cursor: 'pointer', fontSize: 12,
+          letterSpacing: '.12em', textAlign: 'left', fontWeight: 700
         }}
       >
         + NEW PROJECT
@@ -513,51 +518,46 @@ function NewProject() {
   );
 }
 
-function ProjectRow({ project }: { project: Project }) {
-  const { state, dispatch } = useStore();
-  const [armed, fire] = useArmed();
-  const [editing, setEditing] = useState(false);
-  const quests = state.data.quests.filter((q) => q.projectId === project.id);
-  const taskCount = state.data.tasks.filter((t) => quests.some((q) => q.id === t.questId)).length;
-
-  if (editing) {
-    return (
-      <div style={{ padding: '6px 0', borderBottom: '1px solid #1e1e1c' }}>
-        <ProjectForm
-          initial={{ name: project.name, color: project.colorTag }}
-          submitLabel="SAVE"
-          onCancel={() => setEditing(false)}
-          onSubmit={(v) => { dispatch({ type: 'edit-project', projectId: project.id, ...v }); setEditing(false); }}
-        />
-      </div>
-    );
-  }
-
+/** One card per project on the Quests tab — tap to open its quests. */
+function ProjectCard({ project, onOpen }: { project: Project; onOpen: () => void }) {
+  const { state } = useStore();
+  const { data } = state;
+  const quests = data.quests.filter((q) => q.projectId === project.id);
+  const tasks = data.tasks.filter((t) => quests.some((q) => q.id === t.questId));
+  const done = tasks.filter((t) => t.status === 'done').length;
+  const pct = tasks.length ? Math.round((done / tasks.length) * 100) : 0;
+  const activeQuest = quests.find((q) => q.status === 'active');
   const parked = project.status === 'parked';
+
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 6px', borderBottom: '1px solid #1e1e1c' }}>
-      <span style={{ width: 10, height: 10, borderRadius: 2, background: project.colorTag, flex: 'none', opacity: parked ? 0.4 : 1 }} />
-      <span style={{
-        flex: 1, minWidth: 0, fontSize: 13, fontWeight: 700, lineHeight: 1.4, overflowWrap: 'anywhere',
-        color: parked ? 'var(--text-dim2)' : 'var(--text)'
-      }}>
-        {project.name}
-      </span>
-      <span style={{ fontSize: 10, color: 'var(--text-faint)', flex: 'none' }}>
-        {quests.length}q · {taskCount}t
-      </span>
-      <EditButton thing={`project ${project.name}`} onClick={() => setEditing(true)} />
-      <SmallToggle
-        active={project.status === 'active'}
-        labels={['PARK', 'ACTIVATE']}
-        onClick={() => dispatch({ type: 'toggle-project', projectId: project.id })}
-      />
-      <DeleteButton
-        armed={armed}
-        thing={`project ${project.name}`}
-        onTap={() => { if (fire()) dispatch({ type: 'delete-project', projectId: project.id }); }}
-      />
-    </div>
+    <button
+      className="dq-card"
+      onClick={onOpen}
+      aria-label={`open project ${project.name}`}
+      style={{
+        textAlign: 'left', padding: 14, cursor: 'pointer', color: 'var(--text)',
+        borderLeft: `3px solid ${project.colorTag}`, opacity: parked ? 0.6 : 1,
+        display: 'flex', flexDirection: 'column', gap: 8
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        {project.icon
+          ? <span style={{ fontSize: 20, flex: 'none', lineHeight: 1 }}>{project.icon}</span>
+          : <span style={{ width: 12, height: 12, borderRadius: 3, background: project.colorTag, flex: 'none' }} />}
+        <span style={{ flex: 1, minWidth: 0, fontSize: 15, fontWeight: 800, lineHeight: 1.35, overflowWrap: 'anywhere' }}>
+          {project.name}
+        </span>
+        <span style={{ fontSize: 16, color: 'var(--text-dim2)', flex: 'none' }}>›</span>
+      </div>
+      {project.description && (
+        <div style={{ fontSize: 11, color: 'var(--text-dim)', lineHeight: 1.6 }}>{project.description}</div>
+      )}
+      <div style={{ fontSize: 10, color: 'var(--text-dim2)', letterSpacing: '.06em' }}>
+        {quests.length} quest{quests.length === 1 ? '' : 's'} · {done}/{tasks.length} tasks
+        {activeQuest && <span> · ▶ {activeQuest.title}</span>}
+      </div>
+      {tasks.length > 0 && <Bar pct={pct} color={project.colorTag} height={5} />}
+    </button>
   );
 }
 
@@ -567,6 +567,7 @@ function QuestCard({ quest }: { quest: Quest }) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(quest.title);
   const [dod, setDod] = useState(quest.definitionOfDone);
+  const [projId, setProjId] = useState(quest.projectId);
   const { data } = state;
   // collapse lives in the store so it survives navigating between screens
   const collapsed = state.collapsedQuests[quest.id] ?? quest.status !== 'active';
@@ -579,7 +580,7 @@ function QuestCard({ quest }: { quest: Quest }) {
   const parked = quest.status === 'parked';
 
   const saveEdit = () => {
-    dispatch({ type: 'edit-quest', questId: quest.id, title, dod });
+    dispatch({ type: 'edit-quest', questId: quest.id, title, dod, projectId: projId });
     setEditing(false);
   };
 
@@ -601,7 +602,13 @@ function QuestCard({ quest }: { quest: Quest }) {
             {quest.status === 'done' && <span style={{ color: 'var(--text-faint)' }}> · DONE</span>}
           </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <EditButton thing={`quest ${quest.title}`} onClick={() => { setTitle(quest.title); setDod(quest.definitionOfDone); setEditing(!editing); setCollapsed(false); }} />
+            <EditButton
+              thing={`quest ${quest.title}`}
+              onClick={() => {
+                setTitle(quest.title); setDod(quest.definitionOfDone); setProjId(quest.projectId);
+                setEditing(!editing); setCollapsed(false);
+              }}
+            />
             {quest.status !== 'done' && (
               <SmallToggle
                 active={quest.status === 'active'}
@@ -635,6 +642,21 @@ function QuestCard({ quest }: { quest: Quest }) {
               onChange={(e) => setDod(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') setEditing(false); }}
             />
+            {data.projects.length > 1 && (
+              <select
+                className="dq-input"
+                aria-label="move quest to project"
+                value={projId}
+                onChange={(e) => setProjId(e.target.value)}
+                style={{ appearance: 'none' }}
+              >
+                {data.projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.id === quest.projectId ? `${p.name} (current)` : `move to ${p.name}${p.status === 'parked' ? ' (parked)' : ''}`}
+                  </option>
+                ))}
+              </select>
+            )}
             <div style={{ display: 'flex', gap: 8 }}>
               <button className="dq-btn-solid" style={{ fontSize: 11, padding: '7px 14px' }} onClick={saveEdit}>SAVE</button>
               <button className="dq-btn-ghost muted" onClick={() => setEditing(false)}>CANCEL</button>
@@ -681,45 +703,87 @@ function SectionDivider({ text }: { text: string }) {
 const questRank = (q: Quest) => (q.status === 'active' ? 0 : q.status === 'done' ? 1 : 2);
 const QUEST_SECTION: Record<number, string> = { 1: 'COMPLETED', 2: 'PARKED' };
 
-export function Quests() {
-  const { state } = useStore();
+/** Drill-down: one project's header + its quests, with creation scoped to it. */
+function ProjectDetail({ project, onBack }: { project: Project; onBack: () => void }) {
+  const { state, dispatch } = useStore();
   const { data } = state;
-  const cap = activeProjectCap(data);
+  const [armed, fire] = useArmed();
+  const [editing, setEditing] = useState(false);
+  const parked = project.status === 'parked';
 
-  const quests = [...data.quests].sort(
-    (a, b) => questRank(a) - questRank(b) || a.createdAt - b.createdAt
-  );
-  const projects = [...data.projects].sort(
-    (a, b) => Number(a.status !== 'active') - Number(b.status !== 'active') || a.createdAt - b.createdAt
-  );
+  const quests = data.quests
+    .filter((q) => q.projectId === project.id)
+    .sort((a, b) => questRank(a) - questRank(b) || a.createdAt - b.createdAt);
+  const tasks = data.tasks.filter((t) => quests.some((q) => q.id === t.questId));
+  const done = tasks.filter((t) => t.status === 'done').length;
 
   return (
     <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-        <h2 style={{ margin: 0, fontSize: 18, letterSpacing: '.06em', fontWeight: 800 }}>QUESTS &amp; TASKS</h2>
-        <span style={{ fontSize: 11, color: 'var(--text-dim2)' }}>1 quest / project · max {cap} active</span>
-      </div>
-      <div style={{ fontSize: 11, color: 'var(--text-faint)', lineHeight: 1.6, marginTop: -8 }}>
-        Tasks are checked off in session, not here — define → do, in that order.
+      <button
+        onClick={onBack}
+        aria-label="back to all projects"
+        style={{
+          alignSelf: 'flex-start', border: 'none', background: 'transparent', cursor: 'pointer',
+          color: 'var(--text-dim)', fontSize: 12, letterSpacing: '.12em', fontWeight: 700, padding: '2px 0'
+        }}
+      >
+        ‹ ALL PROJECTS
+      </button>
+
+      <div className="dq-card" style={{ padding: 16, borderLeft: `3px solid ${project.colorTag}`, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {editing ? (
+          <ProjectForm
+            initial={{ name: project.name, color: project.colorTag, description: project.description ?? '', icon: project.icon ?? '' }}
+            submitLabel="SAVE"
+            onCancel={() => setEditing(false)}
+            onSubmit={(v) => { dispatch({ type: 'edit-project', projectId: project.id, ...v }); setEditing(false); }}
+          />
+        ) : (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {project.icon
+                ? <span style={{ fontSize: 22, flex: 'none', lineHeight: 1 }}>{project.icon}</span>
+                : <span style={{ width: 12, height: 12, borderRadius: 3, background: project.colorTag, flex: 'none' }} />}
+              <span style={{
+                flex: 1, minWidth: 0, fontSize: 17, fontWeight: 800, lineHeight: 1.35, overflowWrap: 'anywhere',
+                color: parked ? 'var(--text-dim)' : 'var(--text)'
+              }}>
+                {project.name}
+              </span>
+              <EditButton thing={`project ${project.name}`} onClick={() => setEditing(true)} />
+              <SmallToggle
+                active={!parked}
+                labels={['PARK', 'ACTIVATE']}
+                onClick={() => dispatch({ type: 'toggle-project', projectId: project.id })}
+              />
+              <DeleteButton
+                armed={armed}
+                thing={`project ${project.name}`}
+                onTap={() => {
+                  if (fire()) {
+                    dispatch({ type: 'delete-project', projectId: project.id });
+                    onBack();
+                  }
+                }}
+              />
+            </div>
+            {project.description && (
+              <div style={{ fontSize: 11, color: 'var(--text-dim)', lineHeight: 1.6 }}>{project.description}</div>
+            )}
+            <div style={{ fontSize: 10, color: 'var(--text-dim2)', letterSpacing: '.06em' }}>
+              {parked ? 'PARKED · ' : ''}{quests.length} quest{quests.length === 1 ? '' : 's'} · {done}/{tasks.length} tasks
+            </div>
+          </>
+        )}
       </div>
 
-      <div className="dq-card" style={{ borderRadius: 6, padding: '14px 16px' }}>
-        <div style={{ ...label, letterSpacing: '.16em', marginBottom: 4 }}>
-          PROJECTS · {data.projects.filter((p) => p.status === 'active').length}/{cap} ACTIVE SLOTS
-        </div>
-        <div style={{ fontSize: 10, color: 'var(--text-faint)', lineHeight: 1.6, marginBottom: 8 }}>
-          Scarcity is a feature — it forces focus. {cap === 2 ? 'Level 5 unlocks a third slot.' : 'Third slot unlocked.'}
-          {' '}Deleting a project removes its quests and tasks; your XP and level stay.
-        </div>
-        {projects.map((p) => (
-          <ProjectRow key={p.id} project={p} />
-        ))}
-        <div style={{ marginTop: 10 }}>
-          <NewProject />
-        </div>
-      </div>
+      <NewQuest project={project} />
 
-      <NewQuest />
+      {quests.length === 0 && (
+        <div style={{ fontSize: 11, color: 'var(--text-dim2)', lineHeight: 1.6, textAlign: 'center', padding: '10px 0' }}>
+          No quests yet — a quest is a milestone with a definition of done. Create the first one above.
+        </div>
+      )}
 
       {quests.map((q, i) => {
         const startsSection = questRank(q) > 0 && (i === 0 || questRank(quests[i - 1]) !== questRank(q));
@@ -730,6 +794,47 @@ export function Quests() {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+export function Quests() {
+  const { state } = useStore();
+  const { data } = state;
+  const cap = activeProjectCap(data);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selected = data.projects.find((p) => p.id === selectedId) ?? null;
+
+  if (selected) return <ProjectDetail project={selected} onBack={() => setSelectedId(null)} />;
+
+  const projects = [...data.projects].sort(
+    (a, b) => Number(a.status !== 'active') - Number(b.status !== 'active') || a.createdAt - b.createdAt
+  );
+
+  return (
+    <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+        <h2 style={{ margin: 0, fontSize: 18, letterSpacing: '.06em', fontWeight: 800 }}>PROJECTS</h2>
+        <span style={{ fontSize: 11, color: 'var(--text-dim2)' }}>
+          {projects.filter((p) => p.status === 'active').length}/{cap} active slots
+        </span>
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--text-faint)', lineHeight: 1.6, marginTop: -8 }}>
+        Tap a project to see its quests and tasks. Scarcity is a feature — max {cap} active
+        {cap === 2 ? '; level 5 unlocks a third slot' : ''}.
+      </div>
+
+      {projects.map((p) => (
+        <ProjectCard key={p.id} project={p} onOpen={() => setSelectedId(p.id)} />
+      ))}
+
+      {projects.length === 0 && (
+        <div style={{ fontSize: 11, color: 'var(--text-dim2)', lineHeight: 1.6, textAlign: 'center', padding: '10px 0' }}>
+          Nothing on the workbench. A project is the game or thing you're building — start one below.
+        </div>
+      )}
+
+      <NewProject />
     </div>
   );
 }

@@ -19,6 +19,10 @@ export interface Project {
   colorTag: string;
   status: 'active' | 'parked';
   createdAt: number;
+  /** One-liner shown on the project card. */
+  description?: string;
+  /** Emoji logo shown in place of the color dot. */
+  icon?: string;
 }
 
 export interface Quest {

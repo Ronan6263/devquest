@@ -92,6 +92,25 @@ export function nextQueuedTask(data: PersistedState, excludeIds?: Set<string>): 
   return todo[0] ?? null;
 }
 
+/**
+ * Rolling-session queue: next task within ONE project only. The active quest
+ * feeds first, then the project's parked quests in creation order — crossing
+ * quests inside the project is fine, crossing projects is not.
+ */
+export function nextSessionTask(data: PersistedState, excludeIds: Set<string>, projectId: string): Task | null {
+  const rank = new Map(
+    data.quests
+      .filter((q) => q.projectId === projectId && q.status !== 'done')
+      .sort((a, b) =>
+        (a.status === 'active' ? 0 : 1) - (b.status === 'active' ? 0 : 1) || a.createdAt - b.createdAt)
+      .map((q, i) => [q.id, i])
+  );
+  const todo = data.tasks
+    .filter((t) => t.status === 'todo' && !excludeIds.has(t.id) && rank.has(t.questId))
+    .sort((a, b) => (rank.get(a.questId)! - rank.get(b.questId)!) || taskOrder(a) - taskOrder(b));
+  return todo[0] ?? null;
+}
+
 export function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'hydrate': {
@@ -126,10 +145,13 @@ export function reducer(state: AppState, action: Action): AppState {
       const checked = { ...s.checked, [action.taskId]: !s.checked[action.taskId] };
       let taskId = s.taskId;
       let toast = state.toast;
-      // completing the current task pulls the next one in — productive sessions keep rolling
+      // completing the current task pulls the next one in — productive sessions
+      // keep rolling, but only within the project the session is working on
       if (action.taskId === s.taskId && checked[action.taskId]) {
         const banked = new Set(Object.keys(checked).filter((k) => checked[k]));
-        const next = nextQueuedTask(state.data, banked);
+        const cur = state.data.tasks.find((t) => t.id === action.taskId);
+        const quest = cur && state.data.quests.find((q) => q.id === cur.questId);
+        const next = quest ? nextSessionTask(state.data, banked, quest.projectId) : null;
         if (next) {
           taskId = next.id;
           toast = `Banked · next up: ${next.title}`;
@@ -194,11 +216,17 @@ export function reducer(state: AppState, action: Action): AppState {
         .map((t) => ({ title: t.title, xp: SIZE_XP[t.size] }));
       let earned = lines.reduce((a, l) => a + l.xp, 0);
 
-      // Quest completion bonus: Σ(task XP) × 0.5 when the quest's last task lands
+      // Quest completion bonus: Σ(task XP) × 0.5 when the quest's last task lands.
+      // Parked quests count too when a rolling session finishes them — but only
+      // if this session actually contributed a task (no retroactive freebies).
       const quests = state.data.quests.map((q) => {
-        if (q.status !== 'active') return q;
+        if (q.status === 'done') return q;
         const qTasks = tasks.filter((t) => t.questId === q.id);
-        if (qTasks.length > 0 && qTasks.every((t) => t.status === 'done')) {
+        if (
+          qTasks.length > 0 &&
+          qTasks.every((t) => t.status === 'done') &&
+          qTasks.some((t) => doneIds.includes(t.id))
+        ) {
           const bonus = Math.round(qTasks.reduce((a, t) => a + SIZE_XP[t.size], 0) * 0.5);
           earned += bonus;
           lines.push({ title: `QUEST COMPLETE · ${q.title}`, xp: bonus });

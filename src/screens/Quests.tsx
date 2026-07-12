@@ -197,7 +197,9 @@ function TaskModal({ task, onClose }: { task: Task; onClose: () => void }) {
 
   return (
     <div
-      onClick={onClose}
+      // close only when the press STARTS on the backdrop — a drag that merely
+      // ends out here (e.g. resizing the notes area) must not dismiss the modal
+      onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
       style={{
         position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(0,0,0,.72)', backdropFilter: 'blur(2px)',
         display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20
@@ -207,7 +209,6 @@ function TaskModal({ task, onClose }: { task: Task; onClose: () => void }) {
         className="dq-card"
         role="dialog"
         aria-label={`task details for ${task.title}`}
-        onClick={(e) => e.stopPropagation()}
         style={{
           width: '100%', maxWidth: 460, maxHeight: '82vh', overflowY: 'auto', padding: 18,
           display: 'flex', flexDirection: 'column', gap: 12, animation: 'dq-rise .2s ease both',

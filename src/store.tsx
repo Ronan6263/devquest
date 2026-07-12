@@ -4,7 +4,7 @@ import type {
 } from './types';
 import { SIZE_XP, levelInfo } from './lib/levels';
 import { evaluateAuto, defById } from './lib/achievements';
-import { loadState, saveState } from './lib/db';
+import { loadState, saveState, loadLiveSession, saveLiveSession } from './lib/db';
 import { emptyState } from './lib/seed';
 import { syncManager } from './lib/sync';
 import { weekKey } from './lib/time';
@@ -17,17 +17,22 @@ export interface AppState {
   overlay: OverlayData | null;
   toast: string | null;
   hydrated: boolean;
+  /** Pre-delete snapshot; non-null while the delete toast offers UNDO. */
+  undo: PersistedState | null;
+  /** Quest collapse state; missing ids fall back to a status-based default. */
+  collapsedQuests: Record<string, boolean>;
 }
 
 type Action =
-  | { type: 'hydrate'; data: PersistedState }
+  | { type: 'hydrate'; data: PersistedState; session?: LiveSession | null }
   | { type: 'go'; screen: Screen }
-  | { type: 'start-session' }
+  | { type: 'start-session'; taskId?: string }
   | { type: 'toggle-check'; taskId: string }
   | { type: 'end-session'; now: number }
   | { type: 'continue-overlay' }
   | { type: 'log-proof'; achievementId: string; proof: string; now: number }
   | { type: 'add-task'; questId: string; title: string; size: TaskSize; tag: TaskTag }
+  | { type: 'move-task'; taskId: string; dir: -1 | 1 }
   | { type: 'delete-task'; taskId: string }
   | { type: 'edit-task'; taskId: string; title: string; size: TaskSize; tag: TaskTag }
   | { type: 'edit-project'; projectId: string; name: string; color: string }
@@ -39,10 +44,13 @@ type Action =
   | { type: 'toggle-quest'; questId: string }
   | { type: 'delete-quest'; questId: string }
   | { type: 'toggle-sound' }
+  | { type: 'set-theme'; theme: string }
   | { type: 'set-handle'; handle: string }
   | { type: 'import'; data: PersistedState }
   | { type: 'reset' }
   | { type: 'sync-adopt'; data: PersistedState }
+  | { type: 'undo-delete' }
+  | { type: 'toggle-quest-collapse'; questId: string; collapsed: boolean }
   | { type: 'toast'; message: string }
   | { type: 'dismiss-toast' };
 
@@ -57,9 +65,12 @@ const activeProjects = (data: PersistedState) => data.projects.filter((p) => p.s
 const activeQuestOf = (data: PersistedState, projectId: string) =>
   data.quests.find((q) => q.projectId === projectId && q.status === 'active');
 
+/** Effective ordering position: manual override first, creation time otherwise. */
+export const taskOrder = (t: Task) => t.sortKey ?? t.createdAt;
+
 /**
  * Next-ignition queue: first todo task, active quests first (in creation
- * order), tasks in creation order within a quest. Pre-loaded before the
+ * order), tasks in queue order within a quest. Pre-loaded before the
  * current session ends.
  */
 export function nextQueuedTask(data: PersistedState): Task | null {
@@ -75,20 +86,30 @@ export function nextQueuedTask(data: PersistedState): Task | null {
   const todo = data.tasks
     .filter((t) => t.status === 'todo' && questRank.has(t.questId) &&
       data.quests.find((q) => q.id === t.questId)!.status === 'active')
-    .sort((a, b) => (questRank.get(a.questId)! - questRank.get(b.questId)!) || a.createdAt - b.createdAt);
+    .sort((a, b) => (questRank.get(a.questId)! - questRank.get(b.questId)!) || taskOrder(a) - taskOrder(b));
   return todo[0] ?? null;
 }
 
-function reducer(state: AppState, action: Action): AppState {
+export function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
-    case 'hydrate':
-      return { ...state, data: action.data, hydrated: true };
+    case 'hydrate': {
+      // A live session only survives if its task still exists and is still todo
+      const task = action.session && action.data.tasks.find((t) => t.id === action.session!.taskId);
+      const session = task && task.status === 'todo' ? action.session! : null;
+      return {
+        ...state, data: action.data, hydrated: true, session,
+        screen: session ? 'session' : state.screen,
+        toast: session ? 'Session resumed — the clock never stopped.' : state.toast
+      };
+    }
 
     case 'go':
       return { ...state, screen: action.screen };
 
     case 'start-session': {
-      const task = nextQueuedTask(state.data);
+      const task = action.taskId
+        ? state.data.tasks.find((t) => t.id === action.taskId && t.status === 'todo') ?? null
+        : nextQueuedTask(state.data);
       if (!task) return { ...state, toast: 'No task queued — define one on the Quests screen first.' };
       return {
         ...state,
@@ -240,6 +261,23 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, data: { ...state.data, tasks: [...state.data.tasks, task] } };
     }
 
+    case 'move-task': {
+      const task = state.data.tasks.find((t) => t.id === action.taskId);
+      if (!task) return state;
+      const siblings = state.data.tasks
+        .filter((t) => t.questId === task.questId)
+        .sort((a, b) => taskOrder(a) - taskOrder(b));
+      const i = siblings.findIndex((t) => t.id === task.id);
+      const neighbor = siblings[i + action.dir];
+      if (!neighbor) return state;
+      const a = taskOrder(task);
+      const b = taskOrder(neighbor);
+      const tasks = state.data.tasks.map((t) =>
+        t.id === task.id ? { ...t, sortKey: b } : t.id === neighbor.id ? { ...t, sortKey: a } : t
+      );
+      return { ...state, data: { ...state.data, tasks } };
+    }
+
     case 'delete-task': {
       const task = state.data.tasks.find((t) => t.id === action.taskId);
       if (!task) return state;
@@ -248,6 +286,8 @@ function reducer(state: AppState, action: Action): AppState {
       }
       return {
         ...state,
+        undo: state.data,
+        toast: `Task "${task.title}" deleted.`,
         data: {
           ...state.data,
           tasks: state.data.tasks.filter((t) => t.id !== action.taskId),
@@ -338,6 +378,7 @@ function reducer(state: AppState, action: Action): AppState {
       const removedTaskIds = state.data.tasks.filter((t) => questIds.includes(t.questId)).map((t) => t.id);
       return {
         ...state,
+        undo: state.data,
         data: {
           ...state.data,
           projects: state.data.projects.filter((x) => x.id !== p.id),
@@ -397,6 +438,7 @@ function reducer(state: AppState, action: Action): AppState {
       const removedTaskIds = state.data.tasks.filter((t) => t.questId === q.id).map((t) => t.id);
       return {
         ...state,
+        undo: state.data,
         data: {
           ...state.data,
           quests: state.data.quests.filter((x) => x.id !== q.id),
@@ -411,6 +453,12 @@ function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         data: { ...state.data, player: { ...state.data.player, soundOn: !state.data.player.soundOn } }
+      };
+
+    case 'set-theme':
+      return {
+        ...state,
+        data: { ...state.data, player: { ...state.data.player, theme: action.theme } }
       };
 
     case 'set-handle': {
@@ -439,15 +487,38 @@ function reducer(state: AppState, action: Action): AppState {
     case 'sync-adopt':
       return { ...state, data: action.data };
 
+    case 'undo-delete':
+      if (!state.undo) return state;
+      return { ...state, data: state.undo, undo: null, toast: 'Restored — nothing was lost.' };
+
+    case 'toggle-quest-collapse':
+      return {
+        ...state,
+        collapsedQuests: { ...state.collapsedQuests, [action.questId]: action.collapsed }
+      };
+
     case 'toast':
       return { ...state, toast: action.message };
 
     case 'dismiss-toast':
-      return { ...state, toast: null };
+      return { ...state, toast: null, undo: null };
 
     default:
       return state;
   }
+}
+
+/**
+ * The UNDO offer only survives until the next data mutation — restoring an
+ * old snapshot after unrelated edits would silently revert them.
+ */
+export function rootReducer(state: AppState, action: Action): AppState {
+  const next = reducer(state, action);
+  const keepsUndo =
+    action.type === 'undo-delete' ||
+    action.type === 'delete-task' || action.type === 'delete-quest' || action.type === 'delete-project' ||
+    next.data === state.data;
+  return keepsUndo || !next.undo ? next : { ...next, undo: null };
 }
 
 interface Store {
@@ -458,26 +529,28 @@ interface Store {
 const StoreContext = createContext<Store | null>(null);
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, undefined, () => ({
+  const [state, dispatch] = useReducer(rootReducer, undefined, () => ({
     data: emptyState(),
     screen: 'home' as Screen,
     session: null,
     overlay: null,
     toast: null,
-    hydrated: false
+    hydrated: false,
+    undo: null,
+    collapsedQuests: {}
   }));
 
-  // hydrate from IndexedDB once, then bring the sync engine up
+  // hydrate from IndexedDB once (resuming any in-flight session), then bring the sync engine up
   const dataRef = useRef(state.data);
   dataRef.current = state.data;
   const adoptingRef = useRef(false);
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const stored = await loadState();
+      const [stored, live] = await Promise.all([loadState(), loadLiveSession()]);
       if (cancelled) return;
       adoptingRef.current = true; // hydration is not a local mutation — don't mark sync dirty
-      dispatch({ type: 'hydrate', data: stored ?? emptyState() });
+      dispatch({ type: 'hydrate', data: stored ?? emptyState(), session: live });
       syncManager.init(
         () => dataRef.current,
         (data) => {
@@ -504,6 +577,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
   }, [state.hydrated, state.data]);
 
+  // persist the live session so a killed PWA can resume mid-session
+  const lastSession = useRef<LiveSession | null>(null);
+  useEffect(() => {
+    if (!state.hydrated) return;
+    if (lastSession.current === state.session) return;
+    lastSession.current = state.session;
+    saveLiveSession(state.session);
+  }, [state.hydrated, state.session]);
+
   // reward-moment sound
   const prevOverlay = useRef<OverlayData | null>(null);
   useEffect(() => {
@@ -514,12 +596,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     prevOverlay.current = state.overlay;
   }, [state.overlay, state.data.player.soundOn]);
 
-  // auto-dismiss toast
+  // auto-dismiss toast (undo-able toasts linger a little longer)
   useEffect(() => {
     if (!state.toast) return;
-    const t = setTimeout(() => dispatch({ type: 'dismiss-toast' }), 3600);
+    const t = setTimeout(() => dispatch({ type: 'dismiss-toast' }), state.undo ? 6000 : 3600);
     return () => clearTimeout(t);
-  }, [state.toast]);
+  }, [state.toast, state.undo]);
 
   const store = useMemo(() => ({ state, dispatch }), [state]);
   return <StoreContext.Provider value={store}>{children}</StoreContext.Provider>;

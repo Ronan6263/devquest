@@ -55,8 +55,8 @@ function RightRail() {
         </div>
         <div style={{ height: 14, background: 'var(--bg-sunken)', border: '1px solid var(--border)', borderRadius: 3, overflow: 'hidden' }}>
           <div style={{
-            height: '100%', width: `${li.pct}%`, background: 'linear-gradient(90deg,#a8461c,#FF7A3D)',
-            boxShadow: '0 0 12px rgba(212,98,43,.6)'
+            height: '100%', width: `${li.pct}%`, background: 'linear-gradient(90deg,var(--accent-deep),var(--accent-bright))',
+            boxShadow: '0 0 12px var(--glow)'
           }} />
         </div>
         <div style={{ fontSize: 11, color: 'var(--text-dim2)', marginTop: 6 }}>{data.player.xp} XP total</div>
@@ -122,6 +122,12 @@ export default function App() {
   const li = levelInfo(state.data.player.xp);
   const [updateReady, setUpdateReady] = useState(false);
   useEffect(() => onUpdateReady(setUpdateReady), []);
+
+  const theme = state.data.player.theme ?? 'Terminal';
+  useEffect(() => {
+    if (theme === 'Terminal') delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = theme;
+  }, [theme]);
 
   if (!state.hydrated) {
     return (
@@ -199,7 +205,12 @@ export default function App() {
             </>
           )}
           {state.overlay && <RewardOverlay />}
-          {state.toast && <Toast message={state.toast} />}
+          {state.toast && (
+            <Toast
+              message={state.toast}
+              onUndo={state.undo ? () => dispatch({ type: 'undo-delete' }) : null}
+            />
+          )}
           {updateReady && <UpdateBanner />}
         </div>
 

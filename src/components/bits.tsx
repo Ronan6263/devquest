@@ -45,8 +45,8 @@ export function Bar({ pct, color, height = 8, glow }: { pct: number; color?: str
     }}>
       <div style={{
         height: '100%', width: `${pct}%`,
-        background: color ?? 'linear-gradient(90deg,#a8461c,#FF7A3D)',
-        boxShadow: glow ? '0 0 12px rgba(212,98,43,.6)' : 'none',
+        background: color ?? 'linear-gradient(90deg,var(--accent-deep),var(--accent-bright))',
+        boxShadow: glow ? '0 0 12px var(--glow)' : 'none',
         transition: 'width .06s linear'
       }} />
     </div>

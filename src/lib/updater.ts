@@ -11,7 +11,7 @@ type Listener = (ready: boolean) => void;
 let listener: Listener | null = null;
 let updateReady = false;
 
-const CHECK_INTERVAL = 60 * 60 * 1000; // hourly
+const CHECK_INTERVAL = 15 * 60 * 1000; // every 15 minutes (plus on foreground)
 
 const updateSW = registerSW({
   immediate: true,

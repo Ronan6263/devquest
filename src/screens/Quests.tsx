@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useStore, activeProjectCap } from '../store';
+import { useStore, activeProjectCap, taskOrder } from '../store';
 import { SIZE_XP, TAG_COLORS } from '../lib/levels';
 import { TagBadge, taskTag, label } from '../components/bits';
 import type { Project, Quest, Task, TaskSize, TaskTag } from '../types';
@@ -32,6 +32,7 @@ function DeleteButton({ armed, onTap, thing }: { armed: boolean; onTap: () => vo
     <button
       onClick={onTap}
       title={`delete ${thing}`}
+      aria-label={armed ? `confirm delete ${thing}` : `delete ${thing}`}
       style={{
         border: `1px solid ${armed ? 'var(--accent)' : 'var(--border-light)'}`,
         background: armed ? 'rgba(212,98,43,.15)' : 'transparent',
@@ -50,6 +51,7 @@ function EditButton({ onClick, thing }: { onClick: () => void; thing: string }) 
     <button
       onClick={onClick}
       title={`edit ${thing}`}
+      aria-label={`edit ${thing}`}
       style={{
         border: '1px solid var(--border-light)', background: 'transparent', color: 'var(--text-dim2)',
         fontSize: 10, fontWeight: 700, padding: '4px 9px', borderRadius: 3, cursor: 'pointer', flex: 'none'
@@ -171,7 +173,12 @@ function AddTask({ quest }: { quest: Quest }) {
   );
 }
 
-function TaskRow({ task }: { task: Task }) {
+const rowIconStyle = {
+  border: 'none', background: 'transparent', color: 'var(--text-faint)',
+  fontSize: 12, cursor: 'pointer', padding: '0 2px', flex: 'none'
+} as const;
+
+function TaskRow({ task, canMove }: { task: Task; canMove: boolean }) {
   const { dispatch } = useStore();
   const [editing, setEditing] = useState(false);
 
@@ -188,7 +195,7 @@ function TaskRow({ task }: { task: Task }) {
 
   const done = task.status === 'done';
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 6px', borderBottom: '1px solid #1e1e1c' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 6px', borderBottom: '1px solid var(--border-dim)' }}>
       <span style={{ fontSize: 16, flex: 'none', width: 16, color: done ? 'var(--success)' : 'var(--text-faint)' }}>
         {done ? '◉' : '○'}
       </span>
@@ -200,22 +207,47 @@ function TaskRow({ task }: { task: Task }) {
         {task.title}
       </span>
       <TagBadge tag={taskTag(task)} small />
-      <span style={{ fontSize: 10, color: 'var(--text-dim)', width: 64, textAlign: 'right', flex: 'none' }}>
+      <span style={{ fontSize: 10, color: 'var(--text-dim)', textAlign: 'right', flex: 'none' }}>
         {task.size} · {SIZE_XP[task.size]}xp
       </span>
       {!done && (
         <>
+          {canMove && (
+            <span style={{ display: 'flex', flexDirection: 'column', flex: 'none', gap: 2 }}>
+              <button
+                onClick={() => dispatch({ type: 'move-task', taskId: task.id, dir: -1 })}
+                title="move up" aria-label={`move task ${task.title} up`}
+                style={{ ...rowIconStyle, fontSize: 9, lineHeight: 1 }}
+              >
+                ▲
+              </button>
+              <button
+                onClick={() => dispatch({ type: 'move-task', taskId: task.id, dir: 1 })}
+                title="move down" aria-label={`move task ${task.title} down`}
+                style={{ ...rowIconStyle, fontSize: 9, lineHeight: 1 }}
+              >
+                ▼
+              </button>
+            </span>
+          )}
+          <button
+            onClick={() => dispatch({ type: 'start-session', taskId: task.id })}
+            title="start a session with this task" aria-label={`start session with ${task.title}`}
+            style={{ ...rowIconStyle, color: 'var(--accent)' }}
+          >
+            ▶
+          </button>
           <button
             onClick={() => setEditing(true)}
-            title="edit task"
-            style={{ border: 'none', background: 'transparent', color: 'var(--text-faint)', fontSize: 12, cursor: 'pointer', padding: '0 2px', flex: 'none' }}
+            title="edit task" aria-label={`edit task ${task.title}`}
+            style={rowIconStyle}
           >
             ✎
           </button>
           <button
             onClick={() => dispatch({ type: 'delete-task', taskId: task.id })}
-            title="remove task"
-            style={{ border: 'none', background: 'transparent', color: 'var(--text-faint)', fontSize: 12, cursor: 'pointer', padding: '0 2px', flex: 'none' }}
+            title="remove task" aria-label={`remove task ${task.title}`}
+            style={rowIconStyle}
           >
             ✕
           </button>
@@ -428,12 +460,14 @@ function QuestCard({ quest }: { quest: Quest }) {
   const { state, dispatch } = useStore();
   const [armed, fire] = useArmed();
   const [editing, setEditing] = useState(false);
-  const [collapsed, setCollapsed] = useState(quest.status !== 'active');
   const [title, setTitle] = useState(quest.title);
   const [dod, setDod] = useState(quest.definitionOfDone);
   const { data } = state;
+  // collapse lives in the store so it survives navigating between screens
+  const collapsed = state.collapsedQuests[quest.id] ?? quest.status !== 'active';
+  const setCollapsed = (c: boolean) => dispatch({ type: 'toggle-quest-collapse', questId: quest.id, collapsed: c });
   const project = data.projects.find((p) => p.id === quest.projectId);
-  const tasks = data.tasks.filter((t) => t.questId === quest.id).sort((a, b) => a.createdAt - b.createdAt);
+  const tasks = data.tasks.filter((t) => t.questId === quest.id).sort((a, b) => taskOrder(a) - taskOrder(b));
   const done = tasks.filter((t) => t.status === 'done').length;
   const pct = tasks.length ? Math.round((done / tasks.length) * 100) : 0;
   const color = project?.colorTag ?? 'var(--text-dim2)';
@@ -523,7 +557,7 @@ function QuestCard({ quest }: { quest: Quest }) {
       {!collapsed && (
         <div style={{ padding: '6px 10px' }}>
           {tasks.map((t) => (
-            <TaskRow key={t.id} task={t} />
+            <TaskRow key={t.id} task={t} canMove={tasks.length > 1} />
           ))}
           {quest.status !== 'done' && <AddTask quest={quest} />}
         </div>

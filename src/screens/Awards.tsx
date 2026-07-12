@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useStore } from '../store';
 import { ACHIEVEMENT_DEFS, type AchievementDef } from '../lib/achievements';
 import { weekKey } from '../lib/time';
-import { label } from '../components/bits';
+import { label, Bar } from '../components/bits';
 
 function ProofModal({ def, onLog, onClose }: { def: AchievementDef; onLog: (proof: string) => void; onClose: () => void }) {
   const [proof, setProof] = useState('');
@@ -79,8 +79,11 @@ export function Awards({ wide }: { wide: boolean }) {
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 5, lineHeight: 1.5 }}>{d.desc}</div>
                 {prog && prog[1] > 1 && (
-                  <div style={{ fontSize: 10, color: 'var(--accent)', marginTop: 8, letterSpacing: '.08em' }}>
-                    {Math.min(prog[0], prog[1])} / {prog[1]}
+                  <div style={{ marginTop: 8 }}>
+                    <div style={{ fontSize: 10, color: 'var(--accent)', letterSpacing: '.08em', marginBottom: 4 }}>
+                      {Math.min(prog[0], prog[1])} / {prog[1]}
+                    </div>
+                    <Bar pct={Math.min(100, Math.round((prog[0] / prog[1]) * 100))} height={5} />
                   </div>
                 )}
               </div>

@@ -175,7 +175,7 @@ function AddTask({ quest }: { quest: Quest }) {
 
 const rowIconStyle = {
   border: 'none', background: 'transparent', color: 'var(--text-faint)',
-  fontSize: 12, cursor: 'pointer', padding: '0 2px', flex: 'none'
+  fontSize: 12, cursor: 'pointer', padding: '5px 8px', flex: 'none', lineHeight: 1
 } as const;
 
 function TaskRow({ task, canMove }: { task: Task; canMove: boolean }) {
@@ -195,64 +195,68 @@ function TaskRow({ task, canMove }: { task: Task; canMove: boolean }) {
 
   const done = task.status === 'done';
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 6px', borderBottom: '1px solid var(--border-dim)' }}>
-      <span style={{ fontSize: 16, flex: 'none', width: 16, color: done ? 'var(--success)' : 'var(--text-faint)' }}>
-        {done ? '◉' : '○'}
-      </span>
-      <span style={{
-        flex: 1, fontSize: 13,
-        textDecoration: done ? 'line-through' : 'none',
-        color: done ? 'var(--text-dim)' : 'var(--text)'
-      }}>
-        {task.title}
-      </span>
-      <TagBadge tag={taskTag(task)} small />
-      <span style={{ fontSize: 10, color: 'var(--text-dim)', textAlign: 'right', flex: 'none' }}>
-        {task.size} · {SIZE_XP[task.size]}xp
-      </span>
-      {!done && (
-        <>
-          {canMove && (
-            <span style={{ display: 'flex', flexDirection: 'column', flex: 'none', gap: 2 }}>
-              <button
-                onClick={() => dispatch({ type: 'move-task', taskId: task.id, dir: -1 })}
-                title="move up" aria-label={`move task ${task.title} up`}
-                style={{ ...rowIconStyle, fontSize: 9, lineHeight: 1 }}
-              >
-                ▲
-              </button>
-              <button
-                onClick={() => dispatch({ type: 'move-task', taskId: task.id, dir: 1 })}
-                title="move down" aria-label={`move task ${task.title} down`}
-                style={{ ...rowIconStyle, fontSize: 9, lineHeight: 1 }}
-              >
-                ▼
-              </button>
-            </span>
-          )}
-          <button
-            onClick={() => dispatch({ type: 'start-session', taskId: task.id })}
-            title="start a session with this task" aria-label={`start session with ${task.title}`}
-            style={{ ...rowIconStyle, color: 'var(--accent)' }}
-          >
-            ▶
-          </button>
-          <button
-            onClick={() => setEditing(true)}
-            title="edit task" aria-label={`edit task ${task.title}`}
-            style={rowIconStyle}
-          >
-            ✎
-          </button>
-          <button
-            onClick={() => dispatch({ type: 'delete-task', taskId: task.id })}
-            title="remove task" aria-label={`remove task ${task.title}`}
-            style={rowIconStyle}
-          >
-            ✕
-          </button>
-        </>
-      )}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 7, padding: '10px 6px', borderBottom: '1px solid var(--border-dim)' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+        <span style={{ fontSize: 16, flex: 'none', width: 16, lineHeight: 1.2, color: done ? 'var(--success)' : 'var(--text-faint)' }}>
+          {done ? '◉' : '○'}
+        </span>
+        <span style={{
+          flex: 1, fontSize: 13, lineHeight: 1.45,
+          textDecoration: done ? 'line-through' : 'none',
+          color: done ? 'var(--text-dim)' : 'var(--text)'
+        }}>
+          {task.title}
+        </span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 26 }}>
+        <TagBadge tag={taskTag(task)} small />
+        <span style={{ fontSize: 10, color: 'var(--text-dim)', flex: 'none' }}>
+          {task.size} · {SIZE_XP[task.size]}xp
+        </span>
+        {!done && (
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}>
+            {canMove && (
+              <>
+                <button
+                  onClick={() => dispatch({ type: 'move-task', taskId: task.id, dir: -1 })}
+                  title="move up" aria-label={`move task ${task.title} up`}
+                  style={rowIconStyle}
+                >
+                  ▲
+                </button>
+                <button
+                  onClick={() => dispatch({ type: 'move-task', taskId: task.id, dir: 1 })}
+                  title="move down" aria-label={`move task ${task.title} down`}
+                  style={rowIconStyle}
+                >
+                  ▼
+                </button>
+              </>
+            )}
+            <button
+              onClick={() => dispatch({ type: 'start-session', taskId: task.id })}
+              title="start a session with this task" aria-label={`start session with ${task.title}`}
+              style={{ ...rowIconStyle, color: 'var(--accent)' }}
+            >
+              ▶
+            </button>
+            <button
+              onClick={() => setEditing(true)}
+              title="edit task" aria-label={`edit task ${task.title}`}
+              style={rowIconStyle}
+            >
+              ✎
+            </button>
+            <button
+              onClick={() => dispatch({ type: 'delete-task', taskId: task.id })}
+              title="remove task" aria-label={`remove task ${task.title}`}
+              style={rowIconStyle}
+            >
+              ✕
+            </button>
+          </span>
+        )}
+      </div>
     </div>
   );
 }

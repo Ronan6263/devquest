@@ -35,9 +35,9 @@ type Action =
   | { type: 'reorder-task'; taskId: string; toIndex: number }
   | { type: 'delete-task'; taskId: string }
   | { type: 'edit-task'; taskId: string; title: string; size: TaskSize; tag: TaskTag }
-  | { type: 'edit-project'; projectId: string; name: string; color: string }
-  | { type: 'edit-quest'; questId: string; title: string; dod: string }
-  | { type: 'add-project'; name: string; color: string }
+  | { type: 'edit-project'; projectId: string; name: string; color: string; description: string; icon: string }
+  | { type: 'edit-quest'; questId: string; title: string; dod: string; projectId?: string }
+  | { type: 'add-project'; name: string; color: string; description: string; icon: string }
   | { type: 'toggle-project'; projectId: string }
   | { type: 'delete-project'; projectId: string }
   | { type: 'add-quest'; projectId: string; title: string; dod: string }
@@ -324,7 +324,13 @@ export function reducer(state: AppState, action: Action): AppState {
         return { ...state, toast: `A project named ${name} already exists.` };
       }
       const projects = state.data.projects.map((x) =>
-        x.id === p.id ? { ...x, name, colorTag: action.color } : x
+        x.id === p.id
+          ? {
+              ...x, name, colorTag: action.color,
+              description: action.description.trim().slice(0, 140) || undefined,
+              icon: action.icon.trim().slice(0, 4) || undefined
+            }
+          : x
       );
       return { ...state, data: { ...state.data, projects } };
     }
@@ -334,10 +340,30 @@ export function reducer(state: AppState, action: Action): AppState {
       if (!q) return state;
       const title = action.title.trim().slice(0, 60);
       if (!title) return state;
+      let projectId = q.projectId;
+      let status = q.status;
+      let toast = state.toast;
+      if (action.projectId && action.projectId !== q.projectId) {
+        const target = state.data.projects.find((p) => p.id === action.projectId);
+        if (!target) return state;
+        projectId = target.id;
+        // moving an active quest still honors the 1-active-quest-per-project rule
+        if (q.status === 'active' && target.status === 'parked') {
+          status = 'parked';
+          toast = `Quest moved to ${target.name} — parked, since that project is parked.`;
+        } else if (q.status === 'active' && activeQuestOf(state.data, target.id)) {
+          status = 'parked';
+          toast = `Quest moved to ${target.name} — parked (1 active quest per project).`;
+        } else {
+          toast = `Quest moved to ${target.name}.`;
+        }
+      }
       const quests = state.data.quests.map((x) =>
-        x.id === q.id ? { ...x, title, definitionOfDone: action.dod.trim().slice(0, 200) || '—' } : x
+        x.id === q.id
+          ? { ...x, title, definitionOfDone: action.dod.trim().slice(0, 200) || '—', projectId, status }
+          : x
       );
-      return { ...state, data: { ...state.data, quests } };
+      return { ...state, data: { ...state.data, quests }, toast };
     }
 
     case 'add-project': {
@@ -349,7 +375,9 @@ export function reducer(state: AppState, action: Action): AppState {
       const cap = activeProjectCap(state.data);
       const hasSlot = activeProjects(state.data).length < cap;
       const project: Project = {
-        id: uid(), name, colorTag: action.color, status: hasSlot ? 'active' : 'parked', createdAt: Date.now()
+        id: uid(), name, colorTag: action.color, status: hasSlot ? 'active' : 'parked', createdAt: Date.now(),
+        description: action.description.trim().slice(0, 140) || undefined,
+        icon: action.icon.trim().slice(0, 4) || undefined
       };
       return {
         ...state,

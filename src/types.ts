@@ -47,6 +47,8 @@ export interface Task {
   sessionId?: string;
   /** Manual ordering override; falls back to createdAt. */
   sortKey?: number;
+  /** Long-form notes: links, subtasks, acceptance detail. */
+  description?: string;
 }
 
 export interface SessionRecord {

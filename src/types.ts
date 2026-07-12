@@ -33,6 +33,8 @@ export interface Quest {
   status: QuestStatus;
   createdAt: number;
   completedAt?: number;
+  /** Manual ordering override; falls back to createdAt. */
+  sortKey?: number;
 }
 
 export interface Task {

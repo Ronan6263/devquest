@@ -138,20 +138,28 @@ describe('delete + undo', () => {
   });
 });
 
-describe('move-task', () => {
-  it('swaps queue order with the neighbor and clamps at the edges', () => {
-    const st = base({
-      projects: [project()], quests: [quest()],
-      tasks: [task({ id: 'a', createdAt: 1 }), task({ id: 'b', createdAt: 2 })]
-    });
-    const order = (s: AppState) =>
-      [...s.data.tasks].sort((x, y) => taskOrder(x) - taskOrder(y)).map((t) => t.id);
+describe('reorder-task', () => {
+  const three = () => base({
+    projects: [project()], quests: [quest()],
+    tasks: [task({ id: 'a', createdAt: 1 }), task({ id: 'b', createdAt: 2 }), task({ id: 'c', createdAt: 3 })]
+  });
+  const order = (s: AppState) =>
+    [...s.data.tasks].sort((x, y) => taskOrder(x) - taskOrder(y)).map((t) => t.id);
 
-    let s = reducer(st, { type: 'move-task', taskId: 'b', dir: -1 });
-    expect(order(s)).toEqual(['b', 'a']);
-    expect(nextQueuedTask(s.data)?.id).toBe('b');
-    // already first: no-op
-    expect(order(reducer(s, { type: 'move-task', taskId: 'b', dir: -1 }))).toEqual(['b', 'a']);
+  it('drops a task at the target index, only touching the moved task', () => {
+    const s = reducer(three(), { type: 'reorder-task', taskId: 'c', toIndex: 0 });
+    expect(order(s)).toEqual(['c', 'a', 'b']);
+    expect(nextQueuedTask(s.data)?.id).toBe('c');
+    expect(s.data.tasks.filter((t) => t.sortKey !== undefined)).toHaveLength(1);
+  });
+
+  it('places between neighbors and clamps out-of-range targets', () => {
+    let s = reducer(three(), { type: 'reorder-task', taskId: 'a', toIndex: 1 });
+    expect(order(s)).toEqual(['b', 'a', 'c']);
+    s = reducer(s, { type: 'reorder-task', taskId: 'b', toIndex: 99 });
+    expect(order(s)).toEqual(['a', 'c', 'b']);
+    // same position: no-op
+    expect(reducer(s, { type: 'reorder-task', taskId: 'b', toIndex: 2 }).data).toBe(s.data);
   });
 });
 

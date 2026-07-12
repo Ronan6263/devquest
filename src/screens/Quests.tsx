@@ -532,15 +532,29 @@ function QuestCard({ quest }: { quest: Quest }) {
   );
 }
 
+function SectionDivider({ text }: { text: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
+      <span style={{ fontSize: 10, letterSpacing: '.2em', color: 'var(--text-faint)' }}>{text}</span>
+      <span style={{ flex: 1, height: 1, background: 'var(--border-dim)' }} />
+    </div>
+  );
+}
+
+const questRank = (q: Quest) => (q.status === 'active' ? 0 : q.status === 'done' ? 1 : 2);
+const QUEST_SECTION: Record<number, string> = { 1: 'COMPLETED', 2: 'PARKED' };
+
 export function Quests() {
   const { state } = useStore();
   const { data } = state;
   const cap = activeProjectCap(data);
 
-  const quests = [...data.quests].sort((a, b) => {
-    const rank = (q: Quest) => (q.status === 'active' ? 0 : q.status === 'done' ? 1 : 2);
-    return rank(a) - rank(b) || a.createdAt - b.createdAt;
-  });
+  const quests = [...data.quests].sort(
+    (a, b) => questRank(a) - questRank(b) || a.createdAt - b.createdAt
+  );
+  const projects = [...data.projects].sort(
+    (a, b) => Number(a.status !== 'active') - Number(b.status !== 'active') || a.createdAt - b.createdAt
+  );
 
   return (
     <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -560,7 +574,7 @@ export function Quests() {
           Scarcity is a feature — it forces focus. {cap === 2 ? 'Level 5 unlocks a third slot.' : 'Third slot unlocked.'}
           {' '}Deleting a project removes its quests and tasks; your XP and level stay.
         </div>
-        {data.projects.map((p) => (
+        {projects.map((p) => (
           <ProjectRow key={p.id} project={p} />
         ))}
         <div style={{ marginTop: 10 }}>
@@ -570,9 +584,15 @@ export function Quests() {
 
       <NewQuest />
 
-      {quests.map((q) => (
-        <QuestCard key={q.id} quest={q} />
-      ))}
+      {quests.map((q, i) => {
+        const startsSection = questRank(q) > 0 && (i === 0 || questRank(quests[i - 1]) !== questRank(q));
+        return (
+          <div key={q.id} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {startsSection && <SectionDivider text={QUEST_SECTION[questRank(q)]} />}
+            <QuestCard quest={q} />
+          </div>
+        );
+      })}
     </div>
   );
 }

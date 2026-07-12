@@ -18,13 +18,29 @@ export function Session() {
     return () => clearInterval(t);
   }, [session.startedAt]);
 
+  // desktop: the tab title carries the clock so progress is visible from other tabs
+  useEffect(() => {
+    document.title = `${formatClock(elapsed)} · DevQuest`;
+    return () => { document.title = 'DevQuest'; };
+  }, [elapsed]);
+
+  const [capture, setCapture] = useState('');
+  const [capturing, setCapturing] = useState(false);
+  const captureTask = () => {
+    if (!capture.trim() || !quest) return;
+    dispatch({ type: 'add-task', questId: quest.id, title: capture, size: 'S', tag: taskTag(task) });
+    setCapture('');
+    setCapturing(false);
+    dispatch({ type: 'toast', message: 'Captured for later — stay on this one.' });
+  };
+
   const counts = elapsed >= 90;
   const xp = SIZE_XP[task.size];
 
   return (
     <div style={{
       minHeight: '100%', display: 'flex', flexDirection: 'column', padding: 22,
-      background: 'radial-gradient(circle at 50% 20%, #201a12 0%, #161513 55%)'
+      background: 'radial-gradient(circle at 50% 20%, color-mix(in srgb, var(--accent) 7%, var(--bg-main-top)) 0%, var(--bg-main-bottom) 55%)'
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span style={{
@@ -55,7 +71,7 @@ export function Session() {
           style={{
             width: '100%', maxWidth: 420, display: 'flex', alignItems: 'center', gap: 18, padding: 24,
             borderRadius: 6, cursor: 'pointer', color: 'var(--text)',
-            background: checked ? '#16211a' : 'var(--bg-panel)',
+            background: checked ? 'color-mix(in srgb, var(--success) 10%, var(--bg-panel))' : 'var(--bg-panel)',
             border: `1px solid ${checked ? 'var(--success)' : 'var(--border-light)'}`,
             transition: 'all .15s'
           }}
@@ -80,6 +96,34 @@ export function Session() {
         <div style={{ fontSize: 11, color: 'var(--text-dim2)', maxWidth: 340, lineHeight: 1.7 }}>
           Tap the task when it's done. XP is only awarded for this pre-defined task — you can't retroactively invent XP.
         </div>
+
+        {quest && !capturing && (
+          <button
+            onClick={() => setCapturing(true)}
+            style={{
+              border: '1px dashed var(--border-light)', background: 'transparent', color: 'var(--text-dim2)',
+              fontSize: 11, letterSpacing: '.1em', padding: '8px 14px', borderRadius: 4, cursor: 'pointer'
+            }}
+          >
+            + CAPTURE A TASK FOR LATER
+          </button>
+        )}
+        {quest && capturing && (
+          <div style={{ display: 'flex', gap: 8, width: '100%', maxWidth: 420 }}>
+            <input
+              className="dq-input"
+              autoFocus
+              placeholder="idea → task, then back to work"
+              value={capture}
+              maxLength={80}
+              style={{ flex: 1 }}
+              onChange={(e) => setCapture(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') captureTask(); if (e.key === 'Escape') setCapturing(false); }}
+            />
+            <button className="dq-btn-ghost" onClick={captureTask}>ADD</button>
+            <button className="dq-btn-ghost muted" onClick={() => setCapturing(false)}>✕</button>
+          </div>
+        )}
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

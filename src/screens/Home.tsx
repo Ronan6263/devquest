@@ -1,9 +1,62 @@
-import { useStore, nextQueuedTask } from '../store';
+import { useState } from 'react';
+import { useStore, nextQueuedTask, taskOrder } from '../store';
 import { levelInfo, SIZE_XP } from '../lib/levels';
 import { streakWeeks } from '../lib/streak';
 import { formatToday } from '../lib/time';
 import { Bar, TagBadge, SizeChip, label, taskColor, taskTag } from '../components/bits';
 import type { Task } from '../types';
+
+const ONBOARDING_KEY = 'dq-onboarding-dismissed';
+
+/** First-run guide: replaces the old seed data as the "how this works" teacher. */
+function Onboarding() {
+  const { state, dispatch } = useStore();
+  const { data } = state;
+  const [dismissed, setDismissed] = useState(() => localStorage.getItem(ONBOARDING_KEY) === '1');
+
+  const steps = [
+    { done: data.projects.length > 0, text: 'Create a project — the thing you\'re building', screen: 'quests' as const },
+    { done: data.quests.length > 0, text: 'Define a quest — a milestone with a definition of done', screen: 'quests' as const },
+    { done: data.tasks.length > 0, text: 'Add a task — the smallest checkable unit', screen: 'quests' as const },
+    { done: data.sessions.length > 0 || data.tasks.some((t) => t.status === 'done'), text: 'Start a session and do it', screen: 'home' as const }
+  ];
+  if (dismissed || steps.every((s) => s.done)) return null;
+
+  const dismiss = () => { localStorage.setItem(ONBOARDING_KEY, '1'); setDismissed(true); };
+
+  return (
+    <div className="dq-card" style={{ padding: 16, borderColor: 'var(--accent)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ fontSize: 11, letterSpacing: '.16em', color: 'var(--accent)', fontWeight: 700 }}>
+          GETTING STARTED
+        </span>
+        <button
+          onClick={dismiss}
+          aria-label="dismiss getting started guide"
+          style={{ border: 'none', background: 'transparent', color: 'var(--text-dim2)', fontSize: 12, cursor: 'pointer' }}
+        >
+          ✕
+        </button>
+      </div>
+      {steps.map((s, i) => (
+        <button
+          key={i}
+          onClick={() => { if (!s.done) dispatch({ type: 'go', screen: s.screen }); }}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 10, padding: 0, border: 'none',
+            background: 'transparent', cursor: s.done ? 'default' : 'pointer', textAlign: 'left',
+            fontSize: 12, color: s.done ? 'var(--text-dim2)' : 'var(--text)'
+          }}
+        >
+          <span style={{ color: s.done ? 'var(--success)' : 'var(--text-faint)', flex: 'none' }}>
+            {s.done ? '◉' : '○'}
+          </span>
+          <span style={{ textDecoration: s.done ? 'line-through' : 'none', lineHeight: 1.5 }}>{s.text}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function CornerBrackets() {
   const s = { position: 'absolute' as const, color: 'var(--on-accent)', opacity: 0.5, fontSize: 20 };
@@ -71,7 +124,7 @@ export function Home({ wide }: { wide: boolean }) {
   const onDeck = data.tasks
     .filter((t) => t.status === 'todo' && t.id !== queued?.id &&
       data.quests.find((q) => q.id === t.questId)?.status === 'active')
-    .sort((a, b) => a.createdAt - b.createdAt)
+    .sort((a, b) => taskOrder(a) - taskOrder(b))
     .slice(0, 3);
 
   const header = (
@@ -89,6 +142,7 @@ export function Home({ wide }: { wide: boolean }) {
     return (
       <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16, minHeight: '100%' }}>
         {header}
+        <Onboarding />
         <div style={{ display: 'flex', gap: 18, flex: 1, minHeight: 0 }}>
           <button className="dq-start-btn" style={{ flex: 1.35, minHeight: 360, gap: 14 }} onClick={start}>
             <CornerBrackets />
@@ -107,11 +161,21 @@ export function Home({ wide }: { wide: boolean }) {
                 <div style={{ fontSize: 12, color: 'var(--text-dim2)' }}>— nothing on deck —</div>
               )}
               {onDeck.map((t) => (
-                <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 0', fontSize: 13, color: 'var(--text-dim)' }}>
+                <button
+                  key={t.id}
+                  onClick={() => dispatch({ type: 'start-session', taskId: t.id })}
+                  title="start a session with this task"
+                  aria-label={`start session with ${t.title}`}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10, padding: '5px 0', fontSize: 13,
+                    color: 'var(--text-dim)', background: 'transparent', border: 'none',
+                    cursor: 'pointer', width: '100%', textAlign: 'left'
+                  }}
+                >
                   <span style={{ width: 7, height: 7, background: taskColor(t), flex: 'none' }} />
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</span>
-                  <span style={{ marginLeft: 'auto', color: 'var(--text-dim2)' }}>{t.size}</span>
-                </div>
+                  <span style={{ marginLeft: 'auto', color: 'var(--text-dim2)', flex: 'none' }}>▶ {t.size}</span>
+                </button>
               ))}
             </div>
           </div>
@@ -123,6 +187,7 @@ export function Home({ wide }: { wide: boolean }) {
   return (
     <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16, minHeight: '100%' }}>
       {header}
+      <Onboarding />
       <button className="dq-start-btn" style={{ minHeight: 340, flex: 'none', gap: 12, width: '100%' }} onClick={start}>
         <CornerBrackets />
         <span style={{ fontSize: 64, lineHeight: 1, fontWeight: 800 }}>▶</span>

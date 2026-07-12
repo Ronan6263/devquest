@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useStore } from '../store';
-import { HEAT_RAMP, TAG_COLORS, levelInfo } from '../lib/levels';
+import { HEAT_RAMP, SIZE_XP, TAG_COLORS, levelInfo } from '../lib/levels';
 import { streakWeeks } from '../lib/streak';
 import { weeklyReport } from '../lib/report';
 import { dayKey, weekStart } from '../lib/time';
@@ -45,6 +45,45 @@ function Heatmap() {
           <span key={c} style={{ width: 10, height: 10, borderRadius: 2, background: c }} />
         ))}
         more
+      </div>
+    </div>
+  );
+}
+
+function XpPerWeek() {
+  const { state } = useStore();
+  const thisMonday = weekStart(Date.now());
+  const weeks = Array.from({ length: 8 }, (_, i) => thisMonday - (7 - i) * 7 * 86400000);
+  const byWeek = new Map<number, number>();
+  for (const t of state.data.tasks) {
+    if (t.status !== 'done' || t.completedAt === undefined) continue;
+    const w = weekStart(t.completedAt);
+    byWeek.set(w, (byWeek.get(w) ?? 0) + SIZE_XP[t.size]);
+  }
+  const max = Math.max(1, ...weeks.map((w) => byWeek.get(w) ?? 0));
+
+  return (
+    <div className="dq-card" style={{ borderRadius: 6, padding: 16 }}>
+      <div style={{ ...label, letterSpacing: '.16em', marginBottom: 12 }}>TASK XP · LAST 8 WEEKS</div>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 74 }}>
+        {weeks.map((w) => {
+          const xp = byWeek.get(w) ?? 0;
+          const d = new Date(w);
+          return (
+            <div key={w} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, height: '100%', justifyContent: 'flex-end' }}>
+              <span style={{ fontSize: 9, color: xp ? 'var(--accent)' : 'var(--text-faint)' }}>{xp || ''}</span>
+              <div
+                title={`${xp} XP`}
+                style={{
+                  width: '100%', borderRadius: 2, minHeight: xp ? 3 : 1,
+                  height: `${Math.round((xp / max) * 52)}px`,
+                  background: xp ? 'linear-gradient(180deg,var(--accent-bright),var(--accent-deep))' : 'var(--border-dim)'
+                }}
+              />
+              <span style={{ fontSize: 8, color: 'var(--text-dim2)' }}>{d.getDate()}/{d.getMonth() + 1}</span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -98,6 +137,7 @@ export function Ledger() {
   const { state } = useStore();
   const { data } = state;
   const [copied, setCopied] = useState(false);
+  const [projectFilter, setProjectFilter] = useState('');
   const report = weeklyReport(data, Date.now());
   const doneTotal = data.tasks.filter((t) => t.status === 'done').length;
   const streak = streakWeeks(data.sessions);
@@ -115,12 +155,31 @@ export function Ledger() {
       <h2 style={{ margin: 0, fontSize: 18, letterSpacing: '.06em', fontWeight: 800 }}>THE LEDGER</h2>
 
       <Heatmap />
+      <XpPerWeek />
 
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
         <Donut />
         <div className="dq-card" style={{ flex: 1, minWidth: 220, borderRadius: 6, padding: 16 }}>
-          <div style={{ ...label, letterSpacing: '.16em', marginBottom: 14 }}>QUEST PROGRESS</div>
-          {data.quests.filter((q) => q.status !== 'parked').map((q) => {
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, gap: 10 }}>
+            <span style={{ ...label, letterSpacing: '.16em' }}>QUEST PROGRESS</span>
+            {data.projects.length > 1 && (
+              <select
+                className="dq-input"
+                aria-label="filter quests by project"
+                value={projectFilter}
+                onChange={(e) => setProjectFilter(e.target.value)}
+                style={{ appearance: 'none', fontSize: 10, padding: '4px 7px' }}
+              >
+                <option value="">ALL PROJECTS</option>
+                {data.projects.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            )}
+          </div>
+          {data.quests
+            .filter((q) => q.status !== 'parked' && (!projectFilter || q.projectId === projectFilter))
+            .map((q) => {
             const tasks = data.tasks.filter((t) => t.questId === q.id);
             const done = tasks.filter((t) => t.status === 'done').length;
             const pct = tasks.length ? Math.round((done / tasks.length) * 100) : 0;

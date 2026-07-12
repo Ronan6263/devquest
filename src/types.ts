@@ -9,6 +9,8 @@ export interface Player {
   xp: number;
   soundOn: boolean;
   unlockedThemes: string[];
+  /** Selected workbench theme; defaults to Terminal. */
+  theme?: string;
 }
 
 export interface Project {
@@ -39,6 +41,8 @@ export interface Task {
   createdAt: number;
   completedAt?: number;
   sessionId?: string;
+  /** Manual ordering override; falls back to createdAt. */
+  sortKey?: number;
 }
 
 export interface SessionRecord {

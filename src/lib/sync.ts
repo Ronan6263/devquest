@@ -28,6 +28,8 @@ export interface SyncStatus {
   state: 'disabled' | 'idle' | 'syncing' | 'offline' | 'error';
   detail?: string;
   lastSyncAt?: number;
+  /** What the last successful sync actually did — surfaced in Config for trust. */
+  lastAction?: 'pushed' | 'pulled' | 'merged' | 'no-change';
 }
 
 interface SyncConfig {
@@ -349,15 +351,23 @@ class SyncManager {
         }
       }
 
+      let action: SyncStatus['lastAction'];
       if (!remote) {
         await this.push(localState, meta);
+        action = 'pushed';
       } else if (remote.updatedAt === meta.lastRemoteStamp) {
-        if (meta.dirty) await this.push(localState, meta);
+        if (meta.dirty) {
+          await this.push(localState, meta);
+          action = 'pushed';
+        } else {
+          action = 'no-change';
+        }
       } else if (!meta.dirty || (meta.lastRemoteStamp === 0 && isPristineSeed(localState))) {
         // clean pull — or a fresh install linking up for the first time
         this.adopt(remote.state);
         this.saveMeta({ lastRemoteStamp: remote.updatedAt, lastSyncedXp: remote.state.player.xp, dirty: false });
         this.toast?.('Synced — picked up changes from your other device.');
+        action = 'pulled';
       } else {
         const localEnv: Envelope = {
           v: 1, updatedAt: Date.now(), deviceId: this.config!.deviceId, state: localState
@@ -366,8 +376,9 @@ class SyncManager {
         this.adopt(merged);
         await this.push(merged, meta);
         this.toast?.('Synced — merged work from both devices.');
+        action = 'merged';
       }
-      this.setStatus({ state: 'idle', lastSyncAt: Date.now() });
+      this.setStatus({ state: 'idle', lastSyncAt: Date.now(), lastAction: action });
     } catch (e) {
       this.setStatus({
         state: navigator.onLine === false ? 'offline' : 'error',

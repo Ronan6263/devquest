@@ -2,6 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import { useStore, nextQueuedTask } from '../store';
 import { levelInfo } from '../lib/levels';
 
+/** What each level milestone unlocks — shown in the level-up moment so it lands. */
+const LEVEL_UNLOCKS: Record<number, string> = {
+  3: 'Notebook theme',
+  5: 'Third active project slot',
+  6: 'CRT theme',
+  9: 'Blueprint theme'
+};
+
 /** The juice. Counts XP from old total to new over ~1100ms while the level bar fills live. */
 export function RewardOverlay() {
   const { state, dispatch } = useStore();
@@ -24,6 +32,11 @@ export function RewardOverlay() {
   const li = levelInfo(display);
   const next = nextQueuedTask(state.data);
 
+  const unlocks: { level: number; what: string }[] = [];
+  for (let l = levelInfo(overlay.oldXp).level + 1; l <= levelInfo(overlay.newXp).level; l++) {
+    if (LEVEL_UNLOCKS[l]) unlocks.push({ level: l, what: LEVEL_UNLOCKS[l] });
+  }
+
   return (
     <div
       style={{
@@ -36,15 +49,23 @@ export function RewardOverlay() {
       {overlay.levelUp && (
         <div style={{
           fontSize: 26, fontWeight: 800, letterSpacing: '.24em', color: 'var(--accent-bright)',
-          textShadow: '0 0 24px rgba(212,98,43,.8)', animation: 'dq-flash .6s ease both'
+          textShadow: '0 0 24px var(--glow)', animation: 'dq-flash .6s ease both'
         }}>
           ★ LEVEL UP ★
         </div>
       )}
+      {unlocks.map((u) => (
+        <div key={u.level} style={{
+          fontSize: 12, fontWeight: 700, letterSpacing: '.12em', color: 'var(--success)',
+          border: '1px solid var(--success)', borderRadius: 4, padding: '7px 14px'
+        }}>
+          LVL {u.level} UNLOCKED · {u.what.toUpperCase()}
+        </div>
+      ))}
       <div style={{ fontSize: 12, letterSpacing: '.24em', color: 'var(--text-dim)' }}>{overlay.headline}</div>
       <div style={{
         fontSize: 72, fontWeight: 800, color: 'var(--accent-bright)', lineHeight: 1,
-        textShadow: '0 0 40px rgba(212,98,43,.6)', fontVariantNumeric: 'tabular-nums'
+        textShadow: '0 0 40px var(--glow)', fontVariantNumeric: 'tabular-nums'
       }}>
         +{overlay.earned}
       </div>
@@ -58,8 +79,8 @@ export function RewardOverlay() {
         </div>
         <div style={{ height: 16, background: 'var(--bg-sunken)', border: '1px solid var(--border)', borderRadius: 4, overflow: 'hidden' }}>
           <div style={{
-            height: '100%', width: `${li.pct}%`, background: 'linear-gradient(90deg,#a8461c,#FF7A3D)',
-            boxShadow: '0 0 16px rgba(255,122,61,.7)', transition: 'width .06s linear'
+            height: '100%', width: `${li.pct}%`, background: 'linear-gradient(90deg,var(--accent-deep),var(--accent-bright))',
+            boxShadow: '0 0 16px var(--glow)', transition: 'width .06s linear'
           }} />
         </div>
       </div>

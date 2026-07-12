@@ -2,6 +2,8 @@
   --bg-app: #0d0d0c;
   --bg-panel: #131311;
   --bg-main: #1a1a1a;
+  --bg-main-top: #1c1c1a;
+  --bg-main-bottom: #181816;
   --bg-sunken: #080808;
   --bg-inset: #161513;
   --border: #2e2e2b;
@@ -16,6 +18,83 @@
   --text-faint: #4a463f;
   --on-accent: #120b06;
   --success: #7FB069;
+  --glow: rgba(212, 98, 43, .55);
+  --scanline-opacity: .5;
+}
+
+/* Notebook — Doodle Defense's paper + graphite look (unlocks at level 3) */
+:root[data-theme='Notebook'] {
+  --bg-app: #d8d2c4;
+  --bg-panel: #efe9dc;
+  --bg-main: #e8e2d3;
+  --bg-main-top: #eae4d5;
+  --bg-main-bottom: #e2dbc9;
+  --bg-sunken: #cfc8b6;
+  --bg-inset: #e2dbc9;
+  --border: #b9b2a2;
+  --border-dim: #c8c1b0;
+  --border-light: #a49d8c;
+  --accent: #a34e1c;
+  --accent-bright: #c2651f;
+  --accent-deep: #7c3a12;
+  --text: #2b2823;
+  --text-dim: #5a554b;
+  --text-dim2: #7a7466;
+  --text-faint: #948d7c;
+  --on-accent: #f5efe2;
+  --success: #4d7a3f;
+  --glow: rgba(163, 78, 28, .3);
+  --scanline-opacity: .1;
+}
+
+/* CRT — green phosphor (unlocks at level 6) */
+:root[data-theme='CRT'] {
+  --bg-app: #020c06;
+  --bg-panel: #04150b;
+  --bg-main: #051a0d;
+  --bg-main-top: #071f10;
+  --bg-main-bottom: #04150b;
+  --bg-sunken: #010704;
+  --bg-inset: #061d0f;
+  --border: #103d22;
+  --border-dim: #0b2c18;
+  --border-light: #17532e;
+  --accent: #25f07a;
+  --accent-bright: #64ff9f;
+  --accent-deep: #14a552;
+  --text: #c9f2d6;
+  --text-dim: #6faa87;
+  --text-dim2: #47795e;
+  --text-faint: #315943;
+  --on-accent: #02180b;
+  --success: #25f07a;
+  --glow: rgba(37, 240, 122, .45);
+  --scanline-opacity: .65;
+}
+
+/* Blueprint — cyan grid on navy (unlocks at level 9) */
+:root[data-theme='Blueprint'] {
+  --bg-app: #081428;
+  --bg-panel: #0a1c3a;
+  --bg-main: #0c2144;
+  --bg-main-top: #0d2348;
+  --bg-main-bottom: #0a1c3a;
+  --bg-sunken: #050d1d;
+  --bg-inset: #0d234a;
+  --border: #1d3a66;
+  --border-dim: #142c50;
+  --border-light: #2a4d80;
+  --accent: #4d9fff;
+  --accent-bright: #7db8ff;
+  --accent-deep: #2f6fc4;
+  --text: #dbe7f7;
+  --text-dim: #8aa2c4;
+  --text-dim2: #5c7396;
+  --text-faint: #46587a;
+  --on-accent: #041022;
+  --success: #6fd0a0;
+  --glow: rgba(77, 159, 255, .45);
+  --scanline-opacity: .35;
 }
 
 * { box-sizing: border-box; }
@@ -50,8 +129,8 @@ input, select {
 ::-webkit-scrollbar-track { background: transparent; }
 
 @keyframes dq-pulse {
-  0%, 100% { box-shadow: 0 0 0 1px #D4622B, 0 0 44px -8px rgba(212, 98, 43, .55); }
-  50% { box-shadow: 0 0 0 1px #FF7A3D, 0 0 70px -4px rgba(212, 98, 43, .8); }
+  0%, 100% { box-shadow: 0 0 0 1px var(--accent), 0 0 44px -8px var(--glow); }
+  50% { box-shadow: 0 0 0 1px var(--accent-bright), 0 0 70px -4px var(--glow); }
 }
 @keyframes dq-scan {
   from { background-position: 0 0; }
@@ -85,7 +164,7 @@ input, select {
   pointer-events: none;
   z-index: 40;
   background: repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0) 0 2px, rgba(0, 0, 0, .18) 2px 3px);
-  opacity: .5;
+  opacity: var(--scanline-opacity);
   mix-blend-mode: multiply;
   animation: dq-scan 8s linear infinite;
 }
@@ -110,14 +189,14 @@ input, select {
   overflow-y: auto;
   position: relative;
   background: var(--bg-main);
-  background-image: linear-gradient(#1c1c1a, #181816);
+  background-image: linear-gradient(var(--bg-main-top), var(--bg-main-bottom));
 }
 
 .dq-start-btn {
   position: relative;
   border: none;
   cursor: pointer;
-  background: linear-gradient(160deg, #D4622B, #a8461c);
+  background: linear-gradient(160deg, var(--accent), var(--accent-deep));
   color: var(--on-accent);
   border-radius: 6px;
   display: flex;
@@ -147,7 +226,7 @@ input, select {
 .dq-nav-desk:hover { color: var(--text); }
 .dq-nav-desk.active {
   font-weight: 700;
-  background: #221a12;
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-panel));
   color: var(--accent);
   border-left-color: var(--accent);
 }
@@ -196,7 +275,7 @@ input, select {
   border-radius: 4px;
   cursor: pointer;
 }
-.dq-btn-ghost:hover { background: rgba(212, 98, 43, .1); }
+.dq-btn-ghost:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .dq-btn-ghost.muted { border-color: var(--border-light); color: var(--text-dim); }
 .dq-btn-ghost.success { border-color: var(--success); color: var(--success); }
 
@@ -210,3 +289,16 @@ input, select {
   cursor: pointer;
 }
 .dq-btn-solid:hover { background: var(--accent-bright); }
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}

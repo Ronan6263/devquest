@@ -50,8 +50,15 @@ function SyncCard() {
     : status.state === 'syncing' ? 'var(--accent)'
     : status.state === 'disabled' ? 'var(--text-faint)'
     : '#D4A72B';
+  const actionWord =
+    status.lastAction === 'pushed' ? 'pushed'
+    : status.lastAction === 'pulled' ? 'pulled'
+    : status.lastAction === 'merged' ? 'merged'
+    : status.lastAction === 'no-change' ? 'in step'
+    : null;
   const statusLine =
-    status.state === 'idle' ? `SYNCED${status.lastSyncAt ? ` · ${timeAgo(status.lastSyncAt)}` : ''}`
+    status.state === 'idle'
+      ? `SYNCED${actionWord ? ` · ${actionWord}` : ''}${status.lastSyncAt ? ` · ${timeAgo(status.lastSyncAt)}` : ''}`
     : status.state === 'syncing' ? 'SYNCING…'
     : status.state === 'offline' ? 'OFFLINE · will retry when back online'
     : status.state === 'error' ? `SYNC PAUSED · ${status.detail ?? 'error'}`
@@ -223,14 +230,21 @@ export function Config({ wide }: { wide: boolean }) {
         <div style={{ ...label, letterSpacing: '.16em', marginBottom: 10 }}>WORKBENCH THEMES · UNLOCK BY LEVEL</div>
         <div style={grid}>
           {THEMES.map((t) => {
-            const active = t.name === 'Terminal';
-            const locked = !active; // v1 ships Terminal only — others stubbed even past their level
-            const levelMet = level >= t.level;
+            const active = (data.player.theme ?? 'Terminal') === t.name;
+            const locked = level < t.level;
             return (
-              <div key={t.name} className="dq-card" style={{
-                borderRadius: 6, padding: 12, opacity: locked ? 0.8 : 1,
-                borderColor: active ? 'var(--accent)' : 'var(--border-dim)'
-              }}>
+              <button
+                key={t.name}
+                className="dq-card"
+                disabled={locked}
+                aria-label={locked ? `${t.name} theme — unlocks at level ${t.level}` : `switch to ${t.name} theme`}
+                onClick={() => dispatch({ type: 'set-theme', theme: t.name })}
+                style={{
+                  borderRadius: 6, padding: 12, opacity: locked ? 0.8 : 1, textAlign: 'left',
+                  cursor: locked ? 'default' : 'pointer', color: 'var(--text)',
+                  borderColor: active ? 'var(--accent)' : 'var(--border-dim)'
+                }}
+              >
                 <div style={{ height: 44, borderRadius: 4, background: t.swatch, marginBottom: 10, position: 'relative', overflow: 'hidden' }}>
                   {locked && (
                     <span style={{
@@ -243,18 +257,18 @@ export function Config({ wide }: { wide: boolean }) {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: 13, fontWeight: 700 }}>{t.name}</span>
-                  <span style={{ fontSize: 10, letterSpacing: '.08em', color: active || levelMet ? 'var(--success)' : 'var(--text-dim2)' }}>
-                    {active ? 'ACTIVE' : `LVL ${t.level}`}
+                  <span style={{ fontSize: 10, letterSpacing: '.08em', color: active || !locked ? 'var(--success)' : 'var(--text-dim2)' }}>
+                    {active ? 'ACTIVE' : locked ? `LVL ${t.level}` : 'TAP TO USE'}
                   </span>
                 </div>
                 <div style={{ fontSize: 10, color: 'var(--text-dim2)', marginTop: 5, lineHeight: 1.5 }}>{t.desc}</div>
-              </div>
+              </button>
             );
           })}
         </div>
         <div style={{ fontSize: 11, color: 'var(--text-dim2)', marginTop: 12, lineHeight: 1.6 }}>
-          v1 ships Terminal only — the rest are stubbed as locked. Each skin is one of your own projects' aesthetics.
-          The tool slowly becomes a museum of the things you shipped.
+          Each skin is one of your own projects' aesthetics — the tool slowly becomes a museum of the things
+          you shipped. Leveling unlocks them for good.
         </div>
       </div>
 

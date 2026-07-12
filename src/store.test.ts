@@ -95,6 +95,60 @@ describe('sessions', () => {
     expect(s.data.player.xp).toBe(taskXp + Math.round(taskXp * 0.5));
   });
 
+  it('rolling never crosses into another project, but does cross into the same project\'s next quest', () => {
+    const st = base({
+      projects: [project(), project({ id: 'p2', name: 'OTHER' })],
+      quests: [
+        quest(), // p1 active
+        quest({ id: 'q-parked', projectId: 'p1', title: 'Parked quest', status: 'parked', createdAt: 2 }),
+        quest({ id: 'q-p2', projectId: 'p2', title: 'Other project quest', createdAt: 0 })
+      ],
+      tasks: [
+        task(), // q1
+        task({ id: 't-parked', questId: 'q-parked', title: 'Parked quest task', createdAt: 2 }),
+        task({ id: 't-p2', questId: 'q-p2', title: 'Other project task', createdAt: 0 })
+      ]
+    });
+    let s = reducer(st, { type: 'start-session', taskId: 't1' });
+    s = reducer(s, { type: 'toggle-check', taskId: 't1' });
+    // p2's task was created earlier and its quest is active — but it's another project
+    expect(s.session?.taskId).toBe('t-parked');
+    s = reducer(s, { type: 'toggle-check', taskId: 't-parked' });
+    // p1 exhausted: the roll stops rather than jumping projects
+    expect(s.session?.taskId).toBe('t-parked');
+  });
+
+  it('a parked quest finished by a rolling session goes done and pays its bonus', () => {
+    const st = base({
+      projects: [project()],
+      quests: [quest(), quest({ id: 'q2', projectId: 'p1', title: 'Second quest', status: 'parked', createdAt: 2 })],
+      tasks: [task(), task({ id: 't2', questId: 'q2', createdAt: 2 })]
+    });
+    let s = reducer(st, { type: 'start-session' });
+    s = reducer(s, { type: 'toggle-check', taskId: 't1' });
+    expect(s.session?.taskId).toBe('t2'); // rolled into the parked quest
+    s = reducer(s, { type: 'toggle-check', taskId: 't2' });
+    s = reducer(s, { type: 'end-session', now: s.session!.startedAt + 120_000 });
+    expect(s.data.quests.every((q) => q.status === 'done')).toBe(true);
+    const perQuestBonus = Math.round(SIZE_XP.S * 0.5);
+    expect(s.overlay?.earned).toBe(SIZE_XP.S * 2 + perQuestBonus * 2);
+  });
+
+  it('an untouched parked quest with pre-done tasks gets no retroactive completion', () => {
+    const st = base({
+      projects: [project()],
+      quests: [quest(), quest({ id: 'q2', projectId: 'p1', status: 'parked', createdAt: 2 })],
+      tasks: [
+        task(),
+        task({ id: 't2', questId: 'q2', status: 'done', completedAt: 1, createdAt: 2 })
+      ]
+    });
+    let s = reducer(st, { type: 'start-session' });
+    s = reducer(s, { type: 'toggle-check', taskId: 't1' });
+    s = reducer(s, { type: 'end-session', now: s.session!.startedAt + 120_000 });
+    expect(s.data.quests.find((q) => q.id === 'q2')?.status).toBe('parked');
+  });
+
   it('checking the current task auto-pulls the next queued task into the session', () => {
     const st = populated();
     st.data.tasks.push(task({ id: 't2', title: 'Second', createdAt: 2 }), task({ id: 't3', title: 'Third', createdAt: 3 }));

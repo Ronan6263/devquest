@@ -32,7 +32,7 @@ type Action =
   | { type: 'continue-overlay' }
   | { type: 'log-proof'; achievementId: string; proof: string; now: number }
   | { type: 'add-task'; questId: string; title: string; size: TaskSize; tag: TaskTag }
-  | { type: 'move-task'; taskId: string; dir: -1 | 1 }
+  | { type: 'reorder-task'; taskId: string; toIndex: number }
   | { type: 'delete-task'; taskId: string }
   | { type: 'edit-task'; taskId: string; title: string; size: TaskSize; tag: TaskTag }
   | { type: 'edit-project'; projectId: string; name: string; color: string }
@@ -261,20 +261,25 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, data: { ...state.data, tasks: [...state.data.tasks, task] } };
     }
 
-    case 'move-task': {
+    case 'reorder-task': {
       const task = state.data.tasks.find((t) => t.id === action.taskId);
       if (!task) return state;
       const siblings = state.data.tasks
         .filter((t) => t.questId === task.questId)
         .sort((a, b) => taskOrder(a) - taskOrder(b));
-      const i = siblings.findIndex((t) => t.id === task.id);
-      const neighbor = siblings[i + action.dir];
-      if (!neighbor) return state;
-      const a = taskOrder(task);
-      const b = taskOrder(neighbor);
-      const tasks = state.data.tasks.map((t) =>
-        t.id === task.id ? { ...t, sortKey: b } : t.id === neighbor.id ? { ...t, sortKey: a } : t
-      );
+      const from = siblings.findIndex((t) => t.id === task.id);
+      const to = Math.max(0, Math.min(siblings.length - 1, action.toIndex));
+      if (from === to) return state;
+      // land between the new neighbors: midpoint keys keep every other task untouched
+      const without = siblings.filter((t) => t.id !== task.id);
+      const prev = without[to - 1];
+      const next = without[to];
+      const sortKey =
+        prev && next ? (taskOrder(prev) + taskOrder(next)) / 2
+        : prev ? taskOrder(prev) + 1000
+        : next ? taskOrder(next) - 1000
+        : task.createdAt;
+      const tasks = state.data.tasks.map((t) => (t.id === task.id ? { ...t, sortKey } : t));
       return { ...state, data: { ...state.data, tasks } };
     }
 

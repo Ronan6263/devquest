@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useStore, activeProjectCap, taskOrder } from '../store';
 import { SIZE_XP, TAG_COLORS } from '../lib/levels';
 import { TagBadge, taskTag, label } from '../components/bits';
@@ -178,24 +178,54 @@ const rowIconStyle = {
   fontSize: 12, cursor: 'pointer', padding: '5px 8px', flex: 'none', lineHeight: 1
 } as const;
 
-function TaskRow({ task, canMove }: { task: Task; canMove: boolean }) {
+interface RowReorder {
+  dragging: boolean;
+  anyDragging: boolean;
+  dy: number;
+  shift: number;
+  onHandleDown: (e: React.PointerEvent) => void;
+  onHandleMove: (e: React.PointerEvent) => void;
+  onHandleUp: (e: React.PointerEvent) => void;
+}
+
+function TaskRow({ task, reorder }: { task: Task; reorder: RowReorder | null }) {
   const { dispatch } = useStore();
   const [editing, setEditing] = useState(false);
 
   if (editing) {
     return (
-      <TaskForm
-        initial={{ title: task.title, size: task.size, tag: taskTag(task) }}
-        submitLabel="SAVE"
-        onCancel={() => setEditing(false)}
-        onSubmit={(v) => { dispatch({ type: 'edit-task', taskId: task.id, ...v }); setEditing(false); }}
-      />
+      <div data-task-row={task.id}>
+        <TaskForm
+          initial={{ title: task.title, size: task.size, tag: taskTag(task) }}
+          submitLabel="SAVE"
+          onCancel={() => setEditing(false)}
+          onSubmit={(v) => { dispatch({ type: 'edit-task', taskId: task.id, ...v }); setEditing(false); }}
+        />
+      </div>
     );
   }
 
   const done = task.status === 'done';
+  const dragging = !!reorder?.dragging;
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 7, padding: '10px 6px', borderBottom: '1px solid var(--border-dim)' }}>
+    <div
+      data-task-row={task.id}
+      style={{
+        display: 'flex', flexDirection: 'column', gap: 7, padding: '10px 6px',
+        borderBottom: '1px solid var(--border-dim)',
+        transform: dragging
+          ? `translateY(${reorder!.dy}px) scale(1.01)`
+          : reorder?.shift ? `translateY(${reorder.shift}px)` : undefined,
+        // the lifted row tracks the pointer instantly; the others glide aside
+        transition: dragging ? 'none' : reorder?.anyDragging ? 'transform .15s ease' : undefined,
+        position: dragging ? 'relative' : undefined,
+        zIndex: dragging ? 5 : undefined,
+        background: dragging ? 'var(--bg-inset)' : undefined,
+        outline: dragging ? '1px solid var(--accent)' : undefined,
+        borderRadius: dragging ? 4 : undefined,
+        boxShadow: dragging ? '0 10px 28px rgba(0,0,0,.5)' : undefined
+      }}
+    >
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
         <span style={{ fontSize: 16, flex: 'none', width: 16, lineHeight: 1.2, color: done ? 'var(--success)' : 'var(--text-faint)' }}>
           {done ? '◉' : '○'}
@@ -207,6 +237,24 @@ function TaskRow({ task, canMove }: { task: Task; canMove: boolean }) {
         }}>
           {task.title}
         </span>
+        {reorder && !done && (
+          <button
+            onPointerDown={reorder.onHandleDown}
+            onPointerMove={reorder.onHandleMove}
+            onPointerUp={reorder.onHandleUp}
+            onPointerCancel={reorder.onHandleUp}
+            title="drag to reorder"
+            aria-label={`drag to reorder ${task.title}`}
+            style={{
+              ...rowIconStyle, padding: '2px 8px', fontSize: 14, marginTop: -2,
+              color: dragging ? 'var(--accent)' : 'var(--text-dim2)',
+              cursor: dragging ? 'grabbing' : 'grab',
+              touchAction: 'none'
+            }}
+          >
+            ⠿
+          </button>
+        )}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 26 }}>
         <TagBadge tag={taskTag(task)} small />
@@ -215,24 +263,6 @@ function TaskRow({ task, canMove }: { task: Task; canMove: boolean }) {
         </span>
         {!done && (
           <span style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}>
-            {canMove && (
-              <>
-                <button
-                  onClick={() => dispatch({ type: 'move-task', taskId: task.id, dir: -1 })}
-                  title="move up" aria-label={`move task ${task.title} up`}
-                  style={rowIconStyle}
-                >
-                  ▲
-                </button>
-                <button
-                  onClick={() => dispatch({ type: 'move-task', taskId: task.id, dir: 1 })}
-                  title="move down" aria-label={`move task ${task.title} down`}
-                  style={rowIconStyle}
-                >
-                  ▼
-                </button>
-              </>
-            )}
             <button
               onClick={() => dispatch({ type: 'start-session', taskId: task.id })}
               title="start a session with this task" aria-label={`start session with ${task.title}`}
@@ -257,6 +287,77 @@ function TaskRow({ task, canMove }: { task: Task; canMove: boolean }) {
           </span>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Owns the pointer-driven drag: the grabbed row follows the finger/cursor, the rest slide aside. */
+function TaskList({ tasks }: { tasks: Task[] }) {
+  const { dispatch } = useStore();
+  const listRef = useRef<HTMLDivElement>(null);
+  const rects = useRef<{ id: string; mid: number; height: number }[]>([]);
+  const [drag, setDrag] = useState<{
+    id: string; from: number; startY: number; dy: number; target: number; height: number;
+  } | null>(null);
+
+  const canReorder = tasks.length > 1;
+
+  const handleDown = (task: Task, index: number) => (e: React.PointerEvent) => {
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    const rows = Array.from(listRef.current?.querySelectorAll<HTMLElement>('[data-task-row]') ?? []);
+    rects.current = rows.map((el) => {
+      const r = el.getBoundingClientRect();
+      return { id: el.dataset.taskRow!, mid: r.top + r.height / 2, height: r.height };
+    });
+    setDrag({
+      id: task.id, from: index, startY: e.clientY, dy: 0, target: index,
+      height: rects.current[index]?.height ?? 44
+    });
+  };
+
+  const handleMove = (e: React.PointerEvent) => {
+    if (!drag) return;
+    const dy = e.clientY - drag.startY;
+    const center = rects.current[drag.from].mid + dy;
+    const others = rects.current.filter((r) => r.id !== drag.id);
+    let target = others.findIndex((o) => center < o.mid);
+    if (target === -1) target = others.length;
+    setDrag((d) => (d ? { ...d, dy, target } : d));
+  };
+
+  const handleUp = () => {
+    if (!drag) return;
+    if (drag.target !== drag.from) {
+      dispatch({ type: 'reorder-task', taskId: drag.id, toIndex: drag.target });
+    }
+    setDrag(null);
+  };
+
+  return (
+    <div ref={listRef} style={{ userSelect: drag ? 'none' : undefined }}>
+      {tasks.map((t, i) => {
+        let shift = 0;
+        if (drag && t.id !== drag.id) {
+          if (drag.from < drag.target && i > drag.from && i <= drag.target) shift = -drag.height;
+          else if (drag.from > drag.target && i >= drag.target && i < drag.from) shift = drag.height;
+        }
+        return (
+          <TaskRow
+            key={t.id}
+            task={t}
+            reorder={canReorder ? {
+              dragging: drag?.id === t.id,
+              anyDragging: !!drag,
+              dy: drag?.dy ?? 0,
+              shift,
+              onHandleDown: handleDown(t, i),
+              onHandleMove: handleMove,
+              onHandleUp: handleUp
+            } : null}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -560,9 +661,7 @@ function QuestCard({ quest }: { quest: Quest }) {
       </div>
       {!collapsed && (
         <div style={{ padding: '6px 10px' }}>
-          {tasks.map((t) => (
-            <TaskRow key={t.id} task={t} canMove={tasks.length > 1} />
-          ))}
+          <TaskList tasks={tasks} />
           {quest.status !== 'done' && <AddTask quest={quest} />}
         </div>
       )}

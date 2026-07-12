@@ -163,6 +163,22 @@ describe('reorder-task', () => {
   });
 });
 
+describe('set-task-description', () => {
+  it('saves trimmed notes and clears them when emptied', () => {
+    const st = base({ projects: [project()], quests: [quest()], tasks: [task()] });
+    let s = reducer(st, { type: 'set-task-description', taskId: 't1', description: '  step 1\nstep 2  ' });
+    expect(s.data.tasks[0].description).toBe('step 1\nstep 2');
+    s = reducer(s, { type: 'set-task-description', taskId: 't1', description: '   ' });
+    expect(s.data.tasks[0].description).toBeUndefined();
+  });
+
+  it('refuses to touch notes on a done task', () => {
+    const st = base({ projects: [project()], quests: [quest()], tasks: [task({ status: 'done', description: 'kept' })] });
+    const s = reducer(st, { type: 'set-task-description', taskId: 't1', description: 'overwrite' });
+    expect(s.data.tasks[0].description).toBe('kept');
+  });
+});
+
 describe('edit-quest project move', () => {
   it('moves a quest to another project, parking it if that project already has an active quest', () => {
     const st = base({

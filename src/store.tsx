@@ -33,6 +33,7 @@ type Action =
   | { type: 'log-proof'; achievementId: string; proof: string; now: number }
   | { type: 'add-task'; questId: string; title: string; size: TaskSize; tag: TaskTag }
   | { type: 'reorder-task'; taskId: string; toIndex: number }
+  | { type: 'set-task-description'; taskId: string; description: string }
   | { type: 'delete-task'; taskId: string }
   | { type: 'edit-task'; taskId: string; title: string; size: TaskSize; tag: TaskTag }
   | { type: 'edit-project'; projectId: string; name: string; color: string; description: string; icon: string }
@@ -280,6 +281,17 @@ export function reducer(state: AppState, action: Action): AppState {
         : next ? taskOrder(next) - 1000
         : task.createdAt;
       const tasks = state.data.tasks.map((t) => (t.id === task.id ? { ...t, sortKey } : t));
+      return { ...state, data: { ...state.data, tasks } };
+    }
+
+    case 'set-task-description': {
+      const task = state.data.tasks.find((t) => t.id === action.taskId);
+      if (!task) return state;
+      if (task.status === 'done') {
+        return { ...state, toast: 'Done tasks are history — their notes are locked with them.' };
+      }
+      const description = action.description.trim().slice(0, 2000) || undefined;
+      const tasks = state.data.tasks.map((t) => (t.id === task.id ? { ...t, description } : t));
       return { ...state, data: { ...state.data, tasks } };
     }
 

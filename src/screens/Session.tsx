@@ -93,6 +93,16 @@ export function Session() {
             </span>
           </span>
         </button>
+        {task.description && (
+          <div style={{
+            fontSize: 11, color: 'var(--text-dim)', width: '100%', maxWidth: 420, lineHeight: 1.7,
+            whiteSpace: 'pre-wrap', textAlign: 'left', background: 'var(--bg-inset)',
+            border: '1px solid var(--border-dim)', borderRadius: 4, padding: 12,
+            maxHeight: 150, overflowY: 'auto'
+          }}>
+            {task.description}
+          </div>
+        )}
         <div style={{ fontSize: 11, color: 'var(--text-dim2)', maxWidth: 340, lineHeight: 1.7 }}>
           Tap the task when it's done. XP is only awarded for this pre-defined task — you can't retroactively invent XP.
         </div>

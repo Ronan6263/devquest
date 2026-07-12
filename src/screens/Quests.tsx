@@ -178,6 +178,99 @@ const rowIconStyle = {
   fontSize: 12, cursor: 'pointer', padding: '5px 8px', flex: 'none', lineHeight: 1
 } as const;
 
+/** Tap a task to open this: full detail over a dimmed backdrop, with room for long notes. */
+function TaskModal({ task, onClose }: { task: Task; onClose: () => void }) {
+  const { dispatch } = useStore();
+  const [desc, setDesc] = useState(task.description ?? '');
+  const done = task.status === 'done';
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const save = () => {
+    dispatch({ type: 'set-task-description', taskId: task.id, description: desc });
+    onClose();
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(0,0,0,.72)', backdropFilter: 'blur(2px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20
+      }}
+    >
+      <div
+        className="dq-card"
+        role="dialog"
+        aria-label={`task details for ${task.title}`}
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: '100%', maxWidth: 460, maxHeight: '82vh', overflowY: 'auto', padding: 18,
+          display: 'flex', flexDirection: 'column', gap: 12, animation: 'dq-rise .2s ease both',
+          borderColor: 'var(--border-light)'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 16, color: done ? 'var(--success)' : 'var(--text-faint)', flex: 'none' }}>
+            {done ? '◉' : '○'}
+          </span>
+          <TagBadge tag={taskTag(task)} small />
+          <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>{task.size} · {SIZE_XP[task.size]}xp</span>
+          <button
+            onClick={onClose}
+            aria-label="close task details"
+            style={{ ...rowIconStyle, marginLeft: 'auto', fontSize: 14 }}
+          >
+            ✕
+          </button>
+        </div>
+        <div style={{
+          fontSize: 15, fontWeight: 700, lineHeight: 1.45,
+          textDecoration: done ? 'line-through' : 'none',
+          color: done ? 'var(--text-dim)' : 'var(--text)'
+        }}>
+          {task.title}
+        </div>
+        {done ? (
+          <>
+            <div style={{
+              fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.7, whiteSpace: 'pre-wrap',
+              background: 'var(--bg-inset)', border: '1px solid var(--border-dim)', borderRadius: 4, padding: 12
+            }}>
+              {task.description || '— no notes —'}
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--text-faint)', letterSpacing: '.06em' }}>
+              DONE · notes are locked with the task
+            </div>
+          </>
+        ) : (
+          <>
+            <textarea
+              className="dq-input"
+              autoFocus
+              rows={9}
+              maxLength={2000}
+              placeholder={'everything the title can\'t hold — steps, links, edge cases,\nhow you\'ll know it\'s actually done…'}
+              value={desc}
+              onChange={(e) => setDesc(e.target.value)}
+              style={{ resize: 'vertical', lineHeight: 1.6, fontSize: 12, minHeight: 140 }}
+            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button className="dq-btn-solid" style={{ fontSize: 11, padding: '8px 16px' }} onClick={save}>SAVE</button>
+              <button className="dq-btn-ghost muted" onClick={onClose}>CANCEL</button>
+              <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--text-faint)' }}>{desc.length}/2000</span>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 interface RowReorder {
   dragging: boolean;
   anyDragging: boolean;
@@ -191,6 +284,7 @@ interface RowReorder {
 function TaskRow({ task, reorder }: { task: Task; reorder: RowReorder | null }) {
   const { dispatch } = useStore();
   const [editing, setEditing] = useState(false);
+  const [detail, setDetail] = useState(false);
 
   if (editing) {
     return (
@@ -230,12 +324,21 @@ function TaskRow({ task, reorder }: { task: Task; reorder: RowReorder | null }) 
         <span style={{ fontSize: 16, flex: 'none', width: 16, lineHeight: 1.2, color: done ? 'var(--success)' : 'var(--text-faint)' }}>
           {done ? '◉' : '○'}
         </span>
-        <span style={{
-          flex: 1, fontSize: 13, lineHeight: 1.45,
-          textDecoration: done ? 'line-through' : 'none',
-          color: done ? 'var(--text-dim)' : 'var(--text)'
-        }}>
+        <span
+          onClick={() => setDetail(true)}
+          title="tap for details"
+          role="button"
+          aria-label={`open details for ${task.title}`}
+          style={{
+            flex: 1, fontSize: 13, lineHeight: 1.45, cursor: 'pointer',
+            textDecoration: done ? 'line-through' : 'none',
+            color: done ? 'var(--text-dim)' : 'var(--text)'
+          }}
+        >
           {task.title}
+          {task.description && (
+            <span title="has notes" style={{ color: 'var(--text-faint)', fontSize: 10, marginLeft: 7 }}>≣</span>
+          )}
         </span>
         {reorder && !done && (
           <button
@@ -287,6 +390,7 @@ function TaskRow({ task, reorder }: { task: Task; reorder: RowReorder | null }) 
           </span>
         )}
       </div>
+      {detail && <TaskModal task={task} onClose={() => setDetail(false)} />}
     </div>
   );
 }

@@ -62,6 +62,73 @@ function EditButton({ onClick, thing }: { onClick: () => void; thing: string }) 
   );
 }
 
+/**
+ * Heavy-friction delete for anything holding completed work: the quick
+ * double-tap isn't enough when banked history would go with it.
+ */
+function DangerDeleteModal({
+  thing, detail, onConfirm, onClose
+}: {
+  thing: string;
+  detail: string;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  const [text, setText] = useState('');
+  const ok = text.trim().toUpperCase() === 'DELETE';
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(0,0,0,.72)', backdropFilter: 'blur(2px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20
+      }}
+    >
+      <div
+        className="dq-card"
+        role="dialog"
+        aria-label={`confirm deleting ${thing}`}
+        style={{
+          width: '100%', maxWidth: 420, padding: 18, display: 'flex', flexDirection: 'column', gap: 12,
+          animation: 'dq-rise .2s ease both', border: '1px solid var(--accent)'
+        }}
+      >
+        <div style={{ fontSize: 11, letterSpacing: '.16em', color: 'var(--accent)', fontWeight: 800 }}>
+          ⚠ DELETING COMPLETED WORK
+        </div>
+        <div style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.45, overflowWrap: 'anywhere' }}>{thing}</div>
+        <div style={{ fontSize: 11, color: 'var(--text-dim)', lineHeight: 1.7 }}>{detail}</div>
+        <input
+          className="dq-input"
+          autoFocus
+          placeholder="type DELETE to confirm"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && ok) onConfirm(); if (e.key === 'Escape') onClose(); }}
+        />
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            className="dq-btn-solid"
+            disabled={!ok}
+            style={{ fontSize: 11, padding: '8px 16px', opacity: ok ? 1 : 0.4 }}
+            onClick={() => { if (ok) onConfirm(); }}
+          >
+            DELETE FOREVER
+          </button>
+          <button className="dq-btn-ghost muted" onClick={onClose}>KEEP IT</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SmallToggle({ active, onClick, labels }: { active: boolean; onClick: () => void; labels: [string, string] }) {
   return (
     <button
@@ -677,6 +744,7 @@ function QuestCard({ quest, dragHandle }: { quest: Quest; dragHandle: QuestDragH
   const { state, dispatch } = useStore();
   const [armed, fire] = useArmed();
   const [editing, setEditing] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [title, setTitle] = useState(quest.title);
   const [dod, setDod] = useState(quest.definitionOfDone);
   const [projId, setProjId] = useState(quest.projectId);
@@ -749,10 +817,26 @@ function QuestCard({ quest, dragHandle }: { quest: Quest; dragHandle: QuestDragH
             <DeleteButton
               armed={armed}
               thing={`quest ${quest.title}`}
-              onTap={() => { if (fire()) dispatch({ type: 'delete-quest', questId: quest.id }); }}
+              onTap={() => {
+                // completed work never goes with a quick double-tap
+                if (quest.status === 'done' || done > 0) { setConfirmingDelete(true); return; }
+                if (fire()) dispatch({ type: 'delete-quest', questId: quest.id });
+              }}
             />
           </div>
         </div>
+        {confirmingDelete && (
+          <DangerDeleteModal
+            thing={`Quest "${quest.title}"`}
+            detail={
+              done > 0
+                ? `This quest holds ${done} completed task${done === 1 ? '' : 's'} — deleting erases that record from your history. Banked XP and your level stay.`
+                : 'This quest is completed history — deleting erases its record. Banked XP and your level stay.'
+            }
+            onConfirm={() => { setConfirmingDelete(false); dispatch({ type: 'delete-quest', questId: quest.id }); }}
+            onClose={() => setConfirmingDelete(false)}
+          />
+        )}
         {editing ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
             <input
@@ -923,6 +1007,7 @@ function ProjectDetail({ project, onBack }: { project: Project; onBack: () => vo
   const { data } = state;
   const [armed, fire] = useArmed();
   const [editing, setEditing] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const parked = project.status === 'parked';
 
   const quests = data.quests
@@ -979,6 +1064,11 @@ function ProjectDetail({ project, onBack }: { project: Project; onBack: () => vo
                 armed={armed}
                 thing={`project ${project.name}`}
                 onTap={() => {
+                  // a project carrying completed work needs the heavy confirm
+                  if (done > 0 || quests.some((q) => q.status === 'done')) {
+                    setConfirmingDelete(true);
+                    return;
+                  }
                   if (fire()) {
                     dispatch({ type: 'delete-project', projectId: project.id });
                     onBack();
@@ -995,6 +1085,19 @@ function ProjectDetail({ project, onBack }: { project: Project; onBack: () => vo
           </>
         )}
       </div>
+
+      {confirmingDelete && (
+        <DangerDeleteModal
+          thing={`Project ${project.name}`}
+          detail={`This project holds ${done} completed task${done === 1 ? '' : 's'} across ${quests.length} quest${quests.length === 1 ? '' : 's'} — deleting erases that history along with everything else in it. Banked XP and your level stay.`}
+          onConfirm={() => {
+            setConfirmingDelete(false);
+            dispatch({ type: 'delete-project', projectId: project.id });
+            onBack();
+          }}
+          onClose={() => setConfirmingDelete(false)}
+        />
+      )}
 
       <NewQuest project={project} />
 

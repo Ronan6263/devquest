@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useStore, activeProjectCap, taskOrder, questOrder } from '../store';
 import { parseBulkTasks } from '../lib/bulk';
 import { SIZE_XP, TAG_COLORS } from '../lib/levels';
@@ -84,7 +85,8 @@ function DangerDeleteModal({
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  return (
+  // portal: escapes the card's opacity/transform stacking context (parked cards are dimmed)
+  return createPortal(
     <div
       onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
       style={{
@@ -126,7 +128,8 @@ function DangerDeleteModal({
           <button className="dq-btn-ghost muted" onClick={onClose}>KEEP IT</button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -233,7 +236,8 @@ function BulkAddModal({ quest, onClose }: { quest: Quest; onClose: () => void })
     onClose();
   };
 
-  return (
+  // portal: escapes the card's opacity/transform stacking context (parked cards are dimmed)
+  return createPortal(
     <div
       onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
       style={{
@@ -246,7 +250,7 @@ function BulkAddModal({ quest, onClose }: { quest: Quest; onClose: () => void })
         role="dialog"
         aria-label={`bulk add tasks to ${quest.title}`}
         style={{
-          width: '100%', maxWidth: 520, maxHeight: '86vh', overflowY: 'auto', padding: 18,
+          width: '100%', maxWidth: 760, maxHeight: '90vh', overflowY: 'auto', padding: 20,
           display: 'flex', flexDirection: 'column', gap: 12, animation: 'dq-rise .2s ease both',
           borderColor: 'var(--border-light)'
         }}
@@ -259,7 +263,7 @@ function BulkAddModal({ quest, onClose }: { quest: Quest; onClose: () => void })
             ✕
           </button>
         </div>
-        <div style={{ fontSize: 10, color: 'var(--text-dim2)', lineHeight: 1.7 }}>
+        <div style={{ fontSize: 11, color: 'var(--text-dim2)', lineHeight: 1.7 }}>
           One task per line — <span style={{ color: 'var(--text-dim)' }}>Title | Descriptor | S/M/L | Category</span>,
           or without a descriptor: <span style={{ color: 'var(--text-dim)' }}>Title | S/M/L | Category</span>.
           Categories: systems, art, design, polish, biz.
@@ -267,11 +271,11 @@ function BulkAddModal({ quest, onClose }: { quest: Quest; onClose: () => void })
         <textarea
           className="dq-input"
           autoFocus
-          rows={9}
+          rows={12}
           placeholder={'Blockout the casing | S | art\nWire the DT-7 read | Reads faulty state, fires TriggerID on fix | M | systems'}
           value={text}
           onChange={(e) => setText(e.target.value)}
-          style={{ resize: 'vertical', lineHeight: 1.6, fontSize: 12, minHeight: 130, whiteSpace: 'pre' }}
+          style={{ resize: 'vertical', lineHeight: 1.7, fontSize: 13, minHeight: 220, whiteSpace: 'pre', overflowX: 'auto' }}
         />
         {errors.length > 0 && (
           <div style={{ fontSize: 10, color: 'var(--accent)', lineHeight: 1.7 }}>
@@ -292,13 +296,14 @@ function BulkAddModal({ quest, onClose }: { quest: Quest; onClose: () => void })
           </button>
           <button className="dq-btn-ghost muted" onClick={onClose}>CANCEL</button>
           {tasks.length > 0 && errors.length === 0 && (
-            <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--success)' }}>
+            <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--success)' }}>
               ✓ {tasks.length} parsed · +{tasks.reduce((a, t) => a + SIZE_XP[t.size], 0)} XP queued
             </span>
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -366,7 +371,8 @@ function TaskModal({ task, onClose }: { task: Task; onClose: () => void }) {
     onClose();
   };
 
-  return (
+  // portal: escapes the card's opacity/transform stacking context (parked cards are dimmed)
+  return createPortal(
     <div
       // close only when the press STARTS on the backdrop — a drag that merely
       // ends out here (e.g. resizing the notes area) must not dismiss the modal
@@ -381,7 +387,7 @@ function TaskModal({ task, onClose }: { task: Task; onClose: () => void }) {
         role="dialog"
         aria-label={`task details for ${task.title}`}
         style={{
-          width: '100%', maxWidth: 460, maxHeight: '82vh', overflowY: 'auto', padding: 18,
+          width: '100%', maxWidth: 560, maxHeight: '86vh', overflowY: 'auto', padding: 18,
           display: 'flex', flexDirection: 'column', gap: 12, animation: 'dq-rise .2s ease both',
           borderColor: 'var(--border-light)'
         }}
@@ -439,7 +445,8 @@ function TaskModal({ task, onClose }: { task: Task; onClose: () => void }) {
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

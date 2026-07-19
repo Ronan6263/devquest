@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { reducer, rootReducer, nextQueuedTask, taskOrder, type AppState } from './store';
 import { emptyState } from './lib/seed';
+import { parseBulkTasks } from './lib/bulk';
 import { SIZE_XP } from './lib/levels';
 import type { PersistedState, Project, Quest, Task } from './types';
 
@@ -245,6 +246,44 @@ describe('reorder-task', () => {
     expect(order(s)).toEqual(['a', 'c', 'b']);
     // same position: no-op
     expect(reducer(s, { type: 'reorder-task', taskId: 'b', toIndex: 2 }).data).toBe(s.data);
+  });
+});
+
+describe('bulk add', () => {
+  it('parses 3-field and 4-field lines, case-insensitively, skipping blanks', () => {
+    const { tasks, errors } = parseBulkTasks(
+      'Blockout casing | s | ART\n' +
+      '\n' +
+      'Wire the read | Fires TriggerID on fix | m | Systems\n'
+    );
+    expect(errors).toEqual([]);
+    expect(tasks).toEqual([
+      { title: 'Blockout casing', description: undefined, size: 'S', tag: 'art' },
+      { title: 'Wire the read', description: 'Fires TriggerID on fix', size: 'M', tag: 'systems' }
+    ]);
+  });
+
+  it('keeps extra pipes inside the descriptor', () => {
+    const { tasks, errors } = parseBulkTasks('Task | step 1 | step 2 | L | design');
+    expect(errors).toEqual([]);
+    expect(tasks[0].description).toBe('step 1 | step 2');
+    expect(tasks[0].size).toBe('L');
+  });
+
+  it('reports bad size, bad category, and short lines with line numbers', () => {
+    const { tasks, errors } = parseBulkTasks('Good | S | biz\nBad size | X | art\nBad tag | M | cooking\nJust a title');
+    expect(tasks).toHaveLength(1);
+    expect(errors.map((e) => e.line)).toEqual([2, 3, 4]);
+  });
+
+  it('bulk-add-tasks preserves pasted order in the queue', () => {
+    const st = base({ projects: [project()], quests: [quest()] });
+    const { tasks } = parseBulkTasks('First | S | art\nSecond | why it matters | M | systems\nThird | L | biz');
+    const s = reducer(st, { type: 'bulk-add-tasks', questId: 'q1', tasks });
+    const order = [...s.data.tasks].sort((a, b) => taskOrder(a) - taskOrder(b)).map((t) => t.title);
+    expect(order).toEqual(['First', 'Second', 'Third']);
+    expect(s.data.tasks.find((t) => t.title === 'Second')?.description).toBe('why it matters');
+    expect(s.toast).toContain('3 tasks');
   });
 });
 

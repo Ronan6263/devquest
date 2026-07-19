@@ -32,6 +32,7 @@ type Action =
   | { type: 'continue-overlay' }
   | { type: 'log-proof'; achievementId: string; proof: string; now: number }
   | { type: 'add-task'; questId: string; title: string; size: TaskSize; tag: TaskTag }
+  | { type: 'bulk-add-tasks'; questId: string; tasks: { title: string; description?: string; size: TaskSize; tag: TaskTag }[] }
   | { type: 'reorder-task'; taskId: string; toIndex: number }
   | { type: 'set-task-description'; taskId: string; description: string }
   | { type: 'delete-task'; taskId: string }
@@ -303,6 +304,23 @@ export function reducer(state: AppState, action: Action): AppState {
         tags: [action.tag], status: 'todo', createdAt: Date.now()
       };
       return { ...state, data: { ...state.data, tasks: [...state.data.tasks, task] } };
+    }
+
+    case 'bulk-add-tasks': {
+      const quest = state.data.quests.find((q) => q.id === action.questId);
+      if (!quest || action.tasks.length === 0) return state;
+      const now = Date.now();
+      // sequential createdAt keeps the pasted order as the queue order
+      const added: Task[] = action.tasks.map((t, i) => ({
+        id: uid(), questId: quest.id, title: t.title.trim().slice(0, 80),
+        size: t.size, tags: [t.tag], status: 'todo', createdAt: now + i,
+        description: t.description?.trim().slice(0, 2000) || undefined
+      }));
+      return {
+        ...state,
+        data: { ...state.data, tasks: [...state.data.tasks, ...added] },
+        toast: `${added.length} task${added.length === 1 ? '' : 's'} added to "${quest.title}".`
+      };
     }
 
     case 'reorder-task': {

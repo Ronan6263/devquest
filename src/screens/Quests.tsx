@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { useStore, activeProjectCap, taskOrder, questOrder } from '../store';
+import { parseBulkTasks } from '../lib/bulk';
 import { SIZE_XP, TAG_COLORS } from '../lib/levels';
 import { TagBadge, taskTag, label, Bar } from '../components/bits';
 import type { Project, Quest, Task, TaskSize, TaskTag } from '../types';
@@ -213,22 +214,125 @@ function TaskForm({
   );
 }
 
+/** Paste a whole task list at once — one task per pipe-separated line. */
+function BulkAddModal({ quest, onClose }: { quest: Quest; onClose: () => void }) {
+  const { dispatch } = useStore();
+  const [text, setText] = useState('');
+  const { tasks, errors } = parseBulkTasks(text);
+  const canAdd = tasks.length > 0 && errors.length === 0;
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const add = () => {
+    if (!canAdd) return;
+    dispatch({ type: 'bulk-add-tasks', questId: quest.id, tasks });
+    onClose();
+  };
+
+  return (
+    <div
+      onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(0,0,0,.72)', backdropFilter: 'blur(2px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20
+      }}
+    >
+      <div
+        className="dq-card"
+        role="dialog"
+        aria-label={`bulk add tasks to ${quest.title}`}
+        style={{
+          width: '100%', maxWidth: 520, maxHeight: '86vh', overflowY: 'auto', padding: 18,
+          display: 'flex', flexDirection: 'column', gap: 12, animation: 'dq-rise .2s ease both',
+          borderColor: 'var(--border-light)'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 11, letterSpacing: '.16em', color: 'var(--text-dim2)', fontWeight: 700 }}>
+            BULK ADD · {quest.title}
+          </span>
+          <button onClick={onClose} aria-label="close bulk add" style={{ ...rowIconStyle, marginLeft: 'auto', fontSize: 14 }}>
+            ✕
+          </button>
+        </div>
+        <div style={{ fontSize: 10, color: 'var(--text-dim2)', lineHeight: 1.7 }}>
+          One task per line — <span style={{ color: 'var(--text-dim)' }}>Title | Descriptor | S/M/L | Category</span>,
+          or without a descriptor: <span style={{ color: 'var(--text-dim)' }}>Title | S/M/L | Category</span>.
+          Categories: systems, art, design, polish, biz.
+        </div>
+        <textarea
+          className="dq-input"
+          autoFocus
+          rows={9}
+          placeholder={'Blockout the casing | S | art\nWire the DT-7 read | Reads faulty state, fires TriggerID on fix | M | systems'}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          style={{ resize: 'vertical', lineHeight: 1.6, fontSize: 12, minHeight: 130, whiteSpace: 'pre' }}
+        />
+        {errors.length > 0 && (
+          <div style={{ fontSize: 10, color: 'var(--accent)', lineHeight: 1.7 }}>
+            {errors.slice(0, 5).map((e) => (
+              <div key={e.line}>line {e.line}: {e.message}</div>
+            ))}
+            {errors.length > 5 && <div>…and {errors.length - 5} more</div>}
+          </div>
+        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button
+            className="dq-btn-solid"
+            disabled={!canAdd}
+            style={{ fontSize: 11, padding: '8px 16px', opacity: canAdd ? 1 : 0.4 }}
+            onClick={add}
+          >
+            ADD {tasks.length || ''} TASK{tasks.length === 1 ? '' : 'S'}
+          </button>
+          <button className="dq-btn-ghost muted" onClick={onClose}>CANCEL</button>
+          {tasks.length > 0 && errors.length === 0 && (
+            <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--success)' }}>
+              ✓ {tasks.length} parsed · +{tasks.reduce((a, t) => a + SIZE_XP[t.size], 0)} XP queued
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AddTask({ quest }: { quest: Quest }) {
   const { dispatch } = useStore();
   const [open, setOpen] = useState(false);
+  const [bulk, setBulk] = useState(false);
 
   if (!open) {
     return (
-      <button
-        onClick={() => setOpen(true)}
-        style={{
-          margin: '4px 6px 8px', padding: '8px 10px', background: 'transparent', color: 'var(--text-dim2)',
-          border: '1px dashed var(--border-light)', borderRadius: 4, cursor: 'pointer', fontSize: 11,
-          letterSpacing: '.1em', textAlign: 'left'
-        }}
-      >
-        + DEFINE NEXT TASK
-      </button>
+      <div style={{ display: 'flex', gap: 8, margin: '4px 6px 8px' }}>
+        <button
+          onClick={() => setOpen(true)}
+          style={{
+            flex: 1, padding: '8px 10px', background: 'transparent', color: 'var(--text-dim2)',
+            border: '1px dashed var(--border-light)', borderRadius: 4, cursor: 'pointer', fontSize: 11,
+            letterSpacing: '.1em', textAlign: 'left'
+          }}
+        >
+          + DEFINE NEXT TASK
+        </button>
+        <button
+          onClick={() => setBulk(true)}
+          title="paste a whole task list"
+          style={{
+            padding: '8px 10px', background: 'transparent', color: 'var(--text-dim2)',
+            border: '1px dashed var(--border-light)', borderRadius: 4, cursor: 'pointer', fontSize: 11,
+            letterSpacing: '.1em', flex: 'none'
+          }}
+        >
+          ⧉ BULK
+        </button>
+        {bulk && <BulkAddModal quest={quest} onClose={() => setBulk(false)} />}
+      </div>
     );
   }
   return (
